@@ -2243,6 +2243,16 @@ document.addEventListener("click", function(e) {
       }
     }, 100);
   }
+
+  // Robust fallback for Paste LaTeX button (works even before Quill lazy-loads)
+  if (e.target && (e.target.classList.contains("ql-paste-latex") || e.target.closest?.(".ql-paste-latex"))) {
+    openPasteLatexPopup();
+  }
+
+  // Close plx-overlay on backdrop click
+  if (e.target && e.target.id === 'plx-overlay') {
+    closePasteLatexPopup();
+  }
 });
 
 // =====================================================
@@ -2250,38 +2260,51 @@ document.addEventListener("click", function(e) {
 // =====================================================
 function openPasteLatexPopup() {
   const ov = document.getElementById('plx-overlay');
+  if (!ov) return;
   ov.style.display = 'flex';
-  setTimeout(() => document.getElementById('plx-input').focus(), 50);
+  setTimeout(() => document.getElementById('plx-input')?.focus(), 50);
 }
 
 function closePasteLatexPopup() {
-  document.getElementById('plx-overlay').style.display = 'none';
-}
-
-// Close on backdrop click
-document.addEventListener('DOMContentLoaded', function() {
   const ov = document.getElementById('plx-overlay');
-  if (ov) ov.addEventListener('click', function(e) {
-    if (e.target === ov) closePasteLatexPopup();
-  });
-});
+  if (ov) ov.style.display = 'none';
+}
 
 function insertLatexIntoEditor() {
   const raw = document.getElementById('plx-input').value;
   if (!raw.trim()) return;
 
+  // If Quill not ready, scroll to editor to trigger lazy-load, then retry
   if (!currentQuill) {
-    alert('Editor is not ready yet. Please scroll down to the editor first, wait for it to load, then try again.');
+    const editorSection = document.getElementById('output-container');
+    if (editorSection) {
+      editorSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Wait up to 3s for Quill to initialize then retry
+      let tries = 0;
+      const wait = setInterval(() => {
+        tries++;
+        if (currentQuill) {
+          clearInterval(wait);
+          doInsert(raw);
+        } else if (tries > 30) {
+          clearInterval(wait);
+          alert('Editor did not load. Please scroll to the editor manually and try again.');
+        }
+      }, 100);
+    } else {
+      alert('Could not find the editor. Please scroll to the editor section first.');
+    }
     return;
   }
 
+  doInsert(raw);
+}
+
+function doInsert(raw) {
   const quill = currentQuill;
   quill.focus();
 
-  // Clear existing content and start fresh
-  quill.setContents([]);
-
-  // Tokenise the raw text into text/inline-math/display-math tokens
+  // Tokenise: $$...$$ display math, $...$ inline math, rest is plain text
   const tokens = [];
   let remaining = raw;
 
@@ -2290,14 +2313,14 @@ function insertLatexIntoEditor() {
     const inlIdx  = remaining.indexOf('$');
 
     if (dispIdx !== -1 && dispIdx === inlIdx) {
-      // $$ display math comes first
+      // $$ display math
       if (dispIdx > 0) tokens.push({ type: 'text', val: remaining.slice(0, dispIdx) });
       const dispEnd = remaining.indexOf('$$', dispIdx + 2);
       if (dispEnd === -1) { tokens.push({ type: 'text', val: remaining }); break; }
       tokens.push({ type: 'display', val: remaining.slice(dispIdx + 2, dispEnd).trim() });
       remaining = remaining.slice(dispEnd + 2);
     } else if (inlIdx !== -1 && (dispIdx === -1 || inlIdx < dispIdx)) {
-      // $ inline math comes first
+      // $ inline math
       if (inlIdx > 0) tokens.push({ type: 'text', val: remaining.slice(0, inlIdx) });
       const inlEnd = remaining.indexOf('$', inlIdx + 1);
       if (inlEnd === -1) { tokens.push({ type: 'text', val: remaining }); break; }
@@ -2309,9 +2332,8 @@ function insertLatexIntoEditor() {
     }
   }
 
-  // Build a Quill Delta from tokens
-  let ops = [];
-
+  // Build Quill Delta
+  const ops = [];
   tokens.forEach(token => {
     if (token.type === 'text') {
       if (token.val) ops.push({ insert: token.val });
@@ -2322,8 +2344,9 @@ function insertLatexIntoEditor() {
     }
   });
 
-  // Ensure document ends with newline
-  if (ops.length === 0 || typeof ops[ops.length - 1].insert !== 'string' || !ops[ops.length - 1].insert.endsWith('\n')) {
+  // Ensure trailing newline
+  const last = ops[ops.length - 1];
+  if (!last || typeof last.insert !== 'string' || !last.insert.endsWith('\n')) {
     ops.push({ insert: '\n' });
   }
 
