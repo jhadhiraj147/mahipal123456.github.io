@@ -2355,6 +2355,23 @@ function doInsert(raw) {
 
   quill.setSelection(quill.getLength(), 0, 'silent');
   closePasteLatexPopup();
-  document.getElementById('plx-input').value = '';
+  const inp = document.getElementById('plx-input');
+  if (inp) inp.value = '';
+}
+
+// =====================================================
+// LaTeX Renderer Section (standalone preview)
+// =====================================================
+function renderLatexPreview() {
+  const raw = document.getElementById('lr-input').value;
+  if (!raw.trim()) return;
+  const out = document.getElementById('lr-output');
+  out.style.display = 'block';
+  // Set text so MathJax can scan $...$ and $$...$$ delimiters
+  out.textContent = raw;
+  if (window.MathJax && MathJax.typesetPromise) {
+    MathJax.typesetClear([out]);
+    MathJax.typesetPromise([out]).catch(err => console.error('MathJax:', err));
+  }
 }
 
