@@ -112,6 +112,23 @@
   <!-- ===================== -->
   <link rel="stylesheet" href="final.css">
   <link rel="stylesheet" href="shared.css">
+
+  <!-- ===================== -->
+  <!-- MathJax LaTeX Support -->
+  <!-- ===================== -->
+  <script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']]
+    },
+    svg: {
+      fontCache: 'global'
+    }
+  };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
 </head>
 
   <body>
@@ -1770,5 +1787,372 @@ These effects may appear distorted in ruled paper so use simple paper.
    <script src="footer.js" defer></script>
    <script src="consent.js" defer></script>
    <script src="final.js" defer></script>
+
+  <!-- ============================================================ -->
+  <!-- LaTeX Paste → Handwriting  (Modal + Styles + Logic)          -->
+  <!-- ============================================================ -->
+
+  <!-- Invisible print target; shown only during window.print() -->
+  <div id="latex-print-target"></div>
+
+  <!-- Floating trigger button -->
+  <button id="latex-fab" onclick="openLaTeXModal()" title="LaTeX → Handwriting">
+    ✍️ LaTeX Paste
+  </button>
+
+  <!-- Modal overlay -->
+  <div id="latex-paste-modal" class="lp-overlay">
+    <div class="lp-panel">
+
+      <!-- Header -->
+      <div class="lp-header">
+        <span class="lp-title">✍️ Paste LaTeX → Handwriting Preview</span>
+        <button class="lp-close-btn" onclick="closeLaTeXModal()" title="Close">✕</button>
+      </div>
+
+      <!-- Body (two columns) -->
+      <div class="lp-body">
+
+        <!-- LEFT — input -->
+        <div class="lp-input-side">
+          <label class="lp-label">Paste your LaTeX text below</label>
+          <textarea
+            id="latex-paste-input"
+            class="lp-textarea"
+            placeholder="Example:&#10;&#10;Suppose the series $\sum a_n x^n$ has radius $r$.&#10;&#10;$$M_n = |a_n|\,r^n$$&#10;&#10;By hypothesis $\sum a_n r^n$ converges absolutely."
+          ></textarea>
+          <div class="lp-controls">
+            <button class="lp-btn lp-btn-primary" onclick="renderLaTeXPaste()">🖊 Render</button>
+            <button class="lp-btn lp-btn-secondary" onclick="clearLaTeXPaste()">Clear</button>
+            <button class="lp-btn lp-btn-pdf" onclick="saveLaTeXAsPDF()">📄 Save as PDF</button>
+          </div>
+          <p class="lp-tip">
+            Use <code>$...$</code> for inline math, <code>$$...$$</code> for display math.<br>
+            Empty lines become paragraph breaks.
+          </p>
+        </div>
+
+        <!-- RIGHT — handwriting preview -->
+        <div class="lp-preview-side">
+          <div class="lp-page-wrapper">
+            <div id="latex-preview-output" class="lp-page-content">
+              <span class="lp-placeholder">Your handwritten output will appear here…</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /.lp-body -->
+    </div><!-- /.lp-panel -->
+  </div><!-- /#latex-paste-modal -->
+
+  <style>
+    /* ── Floating button ── */
+    #latex-fab {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      z-index: 9000;
+      background: linear-gradient(135deg, #1f2937, #374151);
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      padding: 13px 22px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.25);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #latex-fab:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+
+    /* ── Overlay ── */
+    .lp-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 9100;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .lp-overlay.lp-open { display: flex; }
+
+    /* ── Panel ── */
+    .lp-panel {
+      background: #fff;
+      border-radius: 18px;
+      width: min(96vw, 1100px);
+      height: min(92vh, 780px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+
+    /* ── Header ── */
+    .lp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid #e5e7eb;
+      flex-shrink: 0;
+    }
+    .lp-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #1f2937;
+    }
+    .lp-close-btn {
+      background: #f1f5f9;
+      border: none;
+      border-radius: 8px;
+      width: 34px;
+      height: 34px;
+      font-size: 1rem;
+      cursor: pointer;
+      color: #374151;
+      transition: background 0.2s;
+    }
+    .lp-close-btn:hover { background: #e2e8f0; }
+
+    /* ── Body ── */
+    .lp-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Input side ── */
+    .lp-input-side {
+      width: 38%;
+      min-width: 280px;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      border-right: 1px solid #e5e7eb;
+      gap: 12px;
+      overflow-y: auto;
+    }
+    .lp-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #374151;
+    }
+    .lp-textarea {
+      flex: 1;
+      min-height: 260px;
+      resize: none;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 0.9rem;
+      font-family: 'Courier New', monospace;
+      color: #1f2937;
+      line-height: 1.7;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .lp-textarea:focus { border-color: #3b82f6; }
+    .lp-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .lp-btn {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .lp-btn-primary {
+      background: linear-gradient(135deg, #1f2937, #374151);
+      color: #fff;
+      flex: 1;
+    }
+    .lp-btn-primary:hover { background: linear-gradient(135deg, #374151, #4b5563); }
+    .lp-btn-secondary {
+      background: #f1f5f9;
+      color: #374151;
+    }
+    .lp-btn-secondary:hover { background: #e2e8f0; }
+    .lp-btn-pdf {
+      background: linear-gradient(135deg, #059669, #047857);
+      color: #fff;
+    }
+    .lp-btn-pdf:hover { background: linear-gradient(135deg, #047857, #065f46); }
+    .lp-tip {
+      font-size: 0.78rem;
+      color: #9ca3af;
+      line-height: 1.5;
+      margin: 0;
+    }
+    .lp-tip code {
+      background: #f1f5f9;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      color: #1d4ed8;
+    }
+
+    /* ── Preview side ── */
+    .lp-preview-side {
+      flex: 1;
+      background: #f0f4f8;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+    }
+    .lp-page-wrapper {
+      width: 100%;
+      max-width: 640px;
+    }
+
+    /* ── Paper page ── */
+    .lp-page-content {
+      background: #fff;
+      border-radius: 4px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      padding: 48px 52px;
+      min-height: 500px;
+      font-family: 'AnotherFont', 'CustomFont', cursive;
+      font-size: 20px;
+      line-height: 2;
+      color: #1a1a2e;
+      word-break: break-word;
+      /* ruled-line background */
+      background-image: repeating-linear-gradient(
+        to bottom,
+        transparent,
+        transparent calc(2em - 1px),
+        #d1d5db calc(2em - 1px),
+        #d1d5db 2em
+      );
+      background-attachment: local;
+    }
+    .lp-page-content p {
+      margin: 0 0 0 0;
+      line-height: 2;
+    }
+    .lp-page-content .lp-display-math {
+      display: block;
+      text-align: center;
+      margin: 8px 0;
+      line-height: 1.5;
+    }
+    .lp-placeholder {
+      color: #9ca3af;
+      font-family: sans-serif;
+      font-size: 0.95rem;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 700px) {
+      .lp-body { flex-direction: column; }
+      .lp-input-side { width: 100%; border-right: none; border-bottom: 1px solid #e5e7eb; min-width: unset; }
+      .lp-preview-side { padding: 14px; }
+      .lp-page-content { padding: 28px 24px; font-size: 17px; }
+      #latex-fab { bottom: 16px; right: 16px; padding: 11px 16px; font-size: 0.85rem; }
+    }
+
+    /* ── Print: show ONLY the preview content ── */
+    @media print {
+      body > *:not(#latex-print-target) { display: none !important; }
+      #latex-print-target {
+        display: block !important;
+        font-family: 'AnotherFont', 'CustomFont', cursive !important;
+        font-size: 20px !important;
+        line-height: 2 !important;
+        color: #1a1a2e !important;
+        padding: 48px 60px !important;
+        background: #fff !important;
+      }
+      #latex-print-target p { margin: 0; line-height: 2; }
+    }
+    #latex-print-target { display: none; }
+  </style>
+
+  <script>
+    // ── Open / Close ──────────────────────────────────────────────
+    function openLaTeXModal() {
+      document.getElementById('latex-paste-modal').classList.add('lp-open');
+    }
+    function closeLaTeXModal() {
+      document.getElementById('latex-paste-modal').classList.remove('lp-open');
+    }
+    // Close on backdrop click
+    document.getElementById('latex-paste-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeLaTeXModal();
+    });
+
+    // ── Render ────────────────────────────────────────────────────
+    function renderLaTeXPaste() {
+      const raw = document.getElementById('latex-paste-input').value;
+      const output = document.getElementById('latex-preview-output');
+
+      if (!raw.trim()) {
+        output.innerHTML = '<span class="lp-placeholder">Nothing to render — paste some text first.</span>';
+        return;
+      }
+
+      // Split into blocks on blank lines
+      const blocks = raw.split(/\n{2,}/);
+      let html = '';
+
+      blocks.forEach(block => {
+        const trimmed = block.trim();
+        if (!trimmed) return;
+
+        // Multi-line blocks: each line becomes its own <p>
+        const lines = trimmed.split('\n');
+        lines.forEach(line => {
+          const l = line.trim();
+          if (!l) {
+            html += '<p>&nbsp;</p>';
+            return;
+          }
+          // Escape HTML (but preserve $ signs for MathJax)
+          const escaped = l
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          html += '<p>' + escaped + '</p>';
+        });
+        // blank spacer between blocks
+        html += '<p>&nbsp;</p>';
+      });
+
+      output.innerHTML = html;
+
+      // Let MathJax render
+      if (window.MathJax && MathJax.typesetPromise) {
+        MathJax.typesetPromise([output]).catch(console.error);
+      }
+    }
+
+    // ── Clear ─────────────────────────────────────────────────────
+    function clearLaTeXPaste() {
+      document.getElementById('latex-paste-input').value = '';
+      document.getElementById('latex-preview-output').innerHTML =
+        '<span class="lp-placeholder">Your handwritten output will appear here…</span>';
+    }
+
+    // ── Save as PDF ───────────────────────────────────────────────
+    function saveLaTeXAsPDF() {
+      const content = document.getElementById('latex-preview-output').innerHTML;
+      const pt = document.getElementById('latex-print-target');
+      pt.innerHTML = content;
+      // Small delay so MathJax SVGs are stable before print dialog
+      setTimeout(() => { window.print(); }, 150);
+    }
+  </script>
   </body>
 </html>

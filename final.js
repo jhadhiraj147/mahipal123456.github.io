@@ -2229,3 +2229,16 @@ async function addImageTop() {
     }
 }
 
+// =====================================================
+// Trigger MathJax after clicking Render
+// =====================================================
+document.addEventListener("click", function(e) {
+  if (e.target && e.target.classList.contains("ql-render-math")) {
+    setTimeout(() => {
+      if (window.MathJax) {
+        MathJax.typesetPromise();
+      }
+    }, 100);
+  }
+});
+
