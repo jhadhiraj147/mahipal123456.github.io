@@ -2365,13 +2365,61 @@ function doInsert(raw) {
 function renderLatexPreview() {
   const raw = document.getElementById('lr-input').value;
   if (!raw.trim()) return;
-  const out = document.getElementById('lr-output');
+
+  const font = document.getElementById('lr-font').value;
+  const size = document.getElementById('lr-size').value;
+  const paper = document.getElementById('lr-paper');
+  const out   = document.getElementById('lr-output');
+
+  // Apply handwriting font and size to the paper area
+  paper.style.fontFamily = "'" + font + "', cursive, serif";
+  paper.style.fontSize   = size;
+
+  // Set the raw LaTeX text — MathJax will scan for $...$ delimiters
+  paper.textContent = raw;
+
   out.style.display = 'block';
-  // Set text so MathJax can scan $...$ and $$...$$ delimiters
-  out.textContent = raw;
+
   if (window.MathJax && MathJax.typesetPromise) {
-    MathJax.typesetClear([out]);
-    MathJax.typesetPromise([out]).catch(err => console.error('MathJax:', err));
+    MathJax.typesetClear([paper]);
+    MathJax.typesetPromise([paper]).catch(err => console.error('MathJax:', err));
   }
+}
+
+function lrPrint() {
+  const paper = document.getElementById('lr-paper');
+  if (!paper) return;
+  const font = document.getElementById('lr-font').value;
+  const size = document.getElementById('lr-size').value;
+  // Collect any @font-face rules from the page so the handwriting font works in the new window
+  let fontFaces = '';
+  for (const sheet of document.styleSheets) {
+    try {
+      for (const rule of sheet.cssRules) {
+        if (rule instanceof CSSFontFaceRule) fontFaces += rule.cssText + '\n';
+      }
+    } catch(e) {}
+  }
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+${fontFaces}
+body { margin: 40px; background: #fff; }
+.paper {
+  font-family: '${font}', cursive, serif;
+  font-size: ${size};
+  line-height: 2em;
+  color: #000f64;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background-image: linear-gradient(#0c1d8c22 1px, transparent 1px);
+  background-size: 100% 2em;
+  padding: 32px 40px;
+  min-height: 80vh;
+}
+</style></head><body><div class="paper">${paper.innerHTML}</div></body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); }, 600);
 }
 
