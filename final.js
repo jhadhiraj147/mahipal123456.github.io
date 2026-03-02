@@ -442,11 +442,72 @@ function loadQuill() {
 // ========================================================
 function renderEditorMath() {
   if (!currentQuill) return;
-  const root = currentQuill.root;
-  if (window.MathJax && MathJax.typesetPromise) {
-    MathJax.typesetClear([root]);
-    MathJax.typesetPromise([root]).catch(err => console.error('MathJax:', err));
+
+  // Get plain text from Quill — this preserves $...$ delimiters intact
+  const text = currentQuill.getText();
+
+  // Read the CSS variables the editor is using right now
+  const cs        = getComputedStyle(document.documentElement);
+  const font      = cs.getPropertyValue('--main-font').trim() || "'AnotherFont', cursive";
+  const fontSize  = cs.getPropertyValue('--font-size').trim()  || '18px';
+  const color     = cs.getPropertyValue('--font-color').trim() || '#000f64';
+  const lineH     = cs.getPropertyValue('--line-height').trim() || '2em';
+  const bgLines   = cs.getPropertyValue('--background-lines').trim();
+  const lineSpacing = cs.getPropertyValue('--line-spacing').trim() || '2em';
+
+  const paper = document.getElementById('rmp-paper');
+  paper.style.fontFamily   = font;
+  paper.style.fontSize     = fontSize;
+  paper.style.color        = color;
+  paper.style.lineHeight   = lineH || lineSpacing;
+  paper.style.whiteSpace   = 'pre-wrap';
+  paper.style.wordBreak    = 'break-word';
+  if (bgLines) {
+    paper.style.backgroundImage = bgLines;
+    paper.style.backgroundSize  = '100% ' + (lineH || lineSpacing);
   }
+
+  // Set plain text — MathJax will find $...$ and $$...$$ in text nodes
+  paper.textContent = text;
+
+  document.getElementById('rmp-overlay').style.display = 'block';
+
+  if (window.MathJax && MathJax.typesetPromise) {
+    MathJax.typesetClear([paper]);
+    MathJax.typesetPromise([paper]).catch(err => console.error('MathJax:', err));
+  }
+}
+
+function rmpPrint() {
+  const paper = document.getElementById('rmp-paper');
+  if (!paper) return;
+  let fontFaces = '';
+  for (const sheet of document.styleSheets) {
+    try { for (const rule of sheet.cssRules) {
+      if (rule instanceof CSSFontFaceRule) fontFaces += rule.cssText + '\n';
+    }} catch(e) {}
+  }
+  const cs = getComputedStyle(document.documentElement);
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+${fontFaces}
+body{margin:0;background:#fff}
+.paper{
+  font-family:${cs.getPropertyValue('--main-font').trim()||"'AnotherFont',cursive"};
+  font-size:${cs.getPropertyValue('--font-size').trim()||'18px'};
+  color:${cs.getPropertyValue('--font-color').trim()||'#000f64'};
+  line-height:${cs.getPropertyValue('--line-height').trim()||'2em'};
+  white-space:pre-wrap;word-break:break-word;
+  padding:40px 56px;min-height:100vh;box-sizing:border-box;
+  background-image:${cs.getPropertyValue('--background-lines').trim()||'none'};
+  background-size:100% ${cs.getPropertyValue('--line-height').trim()||'2em'};
+}
+@media print{body{margin:0}}
+</style></head><body><div class="paper">${paper.innerHTML}</div></body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(()=>{win.print();},600);
 }
 
 function initQuill() {
