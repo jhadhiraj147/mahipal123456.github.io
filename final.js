@@ -2242,3 +2242,97 @@ document.addEventListener("click", function(e) {
   }
 });
 
+// =====================================================
+// Paste LaTeX → Insert into Quill Editor
+// =====================================================
+function openPasteLatexPopup() {
+  const ov = document.getElementById('plx-overlay');
+  ov.style.display = 'flex';
+  setTimeout(() => document.getElementById('plx-input').focus(), 50);
+}
+
+function closePasteLatexPopup() {
+  document.getElementById('plx-overlay').style.display = 'none';
+}
+
+// Close on backdrop click
+document.addEventListener('DOMContentLoaded', function() {
+  const ov = document.getElementById('plx-overlay');
+  if (ov) ov.addEventListener('click', function(e) {
+    if (e.target === ov) closePasteLatexPopup();
+  });
+});
+
+function insertLatexIntoEditor() {
+  const raw = document.getElementById('plx-input').value;
+  if (!raw.trim() || !currentQuill) return;
+
+  const quill = currentQuill;
+  // Move cursor to end
+  const len = quill.getLength();
+  quill.setSelection(len, 0);
+
+  // Tokenise: split on $$...$$ then $...$
+  // Token types: 'text', 'inline', 'display'
+  const tokens = [];
+  let remaining = raw;
+
+  while (remaining.length > 0) {
+    // Check display math $$...$$
+    const dispStart = remaining.indexOf('$$');
+    const inlStart  = remaining.indexOf('$');
+
+    if (dispStart !== -1 && dispStart === inlStart) {
+      // display math comes first
+      if (dispStart > 0) tokens.push({ type: 'text', val: remaining.slice(0, dispStart) });
+      const dispEnd = remaining.indexOf('$$', dispStart + 2);
+      if (dispEnd === -1) { tokens.push({ type: 'text', val: remaining }); break; }
+      tokens.push({ type: 'display', val: remaining.slice(dispStart + 2, dispEnd) });
+      remaining = remaining.slice(dispEnd + 2);
+    } else if (inlStart !== -1 && (dispStart === -1 || inlStart < dispStart)) {
+      // inline math comes first
+      if (inlStart > 0) tokens.push({ type: 'text', val: remaining.slice(0, inlStart) });
+      const inlEnd = remaining.indexOf('$', inlStart + 1);
+      if (inlEnd === -1) { tokens.push({ type: 'text', val: remaining }); break; }
+      tokens.push({ type: 'inline', val: remaining.slice(inlStart + 1, inlEnd) });
+      remaining = remaining.slice(inlEnd + 1);
+    } else {
+      tokens.push({ type: 'text', val: remaining });
+      break;
+    }
+  }
+
+  // Insert tokens into Quill
+  let index = quill.getLength() - 1; // before trailing newline
+  // clear selection to end
+  quill.setSelection(index, 0);
+
+  tokens.forEach(token => {
+    if (token.type === 'text') {
+      const lines = token.val.split('\n');
+      lines.forEach((line, i) => {
+        if (line.length > 0) {
+          quill.insertText(index, line, Quill.sources.USER);
+          index += line.length;
+        }
+        if (i < lines.length - 1) {
+          quill.insertText(index, '\n', Quill.sources.USER);
+          index += 1;
+        }
+      });
+    } else {
+      const display = token.type === 'display';
+      quill.insertEmbed(index, 'math', { latex: token.val.trim(), display }, Quill.sources.USER);
+      index += 1;
+      if (display) {
+        quill.insertText(index, '\n', Quill.sources.USER);
+        index += 1;
+      }
+    }
+  });
+
+  quill.setSelection(index, 0, Quill.sources.SILENT);
+  closePasteLatexPopup();
+  document.getElementById('plx-input').value = '';
+}
+
