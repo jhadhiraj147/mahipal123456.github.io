@@ -2304,55 +2304,56 @@ function doInsert(raw) {
   const quill = currentQuill;
   quill.focus();
 
-  // Tokenise: $$...$$ display math, $...$ inline math, rest is plain text
-  const tokens = [];
-  let remaining = raw;
+  // Step 1: clear editor and insert all text as plain text
+  quill.setContents([{ insert: raw + '\n' }], 'silent');
 
-  while (remaining.length > 0) {
-    const dispIdx = remaining.indexOf('$$');
-    const inlIdx  = remaining.indexOf('$');
-
-    if (dispIdx !== -1 && dispIdx === inlIdx) {
-      // $$ display math
-      if (dispIdx > 0) tokens.push({ type: 'text', val: remaining.slice(0, dispIdx) });
-      const dispEnd = remaining.indexOf('$$', dispIdx + 2);
-      if (dispEnd === -1) { tokens.push({ type: 'text', val: remaining }); break; }
-      tokens.push({ type: 'display', val: remaining.slice(dispIdx + 2, dispEnd).trim() });
-      remaining = remaining.slice(dispEnd + 2);
-    } else if (inlIdx !== -1 && (dispIdx === -1 || inlIdx < dispIdx)) {
-      // $ inline math
-      if (inlIdx > 0) tokens.push({ type: 'text', val: remaining.slice(0, inlIdx) });
-      const inlEnd = remaining.indexOf('$', inlIdx + 1);
-      if (inlEnd === -1) { tokens.push({ type: 'text', val: remaining }); break; }
-      tokens.push({ type: 'inline', val: remaining.slice(inlIdx + 1, inlEnd).trim() });
-      remaining = remaining.slice(inlEnd + 1);
-    } else {
-      tokens.push({ type: 'text', val: remaining });
-      break;
+  // Step 2: find ALL math segments ($...$ and $$...$$) with their character positions
+  const segments = [];
+  let i = 0;
+  while (i < raw.length) {
+    if (raw[i] === '$') {
+      if (raw[i + 1] === '$') {
+        // display math $$...$$
+        const end = raw.indexOf('$$', i + 2);
+        if (end !== -1) {
+          segments.push({
+            start: i,
+            end: end + 2,
+            latex: raw.slice(i + 2, end).trim(),
+            display: true
+          });
+          i = end + 2;
+          continue;
+        }
+      } else {
+        // inline math $...$
+        const end = raw.indexOf('$', i + 1);
+        if (end !== -1) {
+          segments.push({
+            start: i,
+            end: end + 1,
+            latex: raw.slice(i + 1, end).trim(),
+            display: false
+          });
+          i = end + 1;
+          continue;
+        }
+      }
     }
+    i++;
   }
 
-  // Build Quill Delta
-  const ops = [];
-  tokens.forEach(token => {
-    if (token.type === 'text') {
-      if (token.val) ops.push({ insert: token.val });
-    } else {
-      const display = token.type === 'display';
-      ops.push({ insert: { math: { latex: token.val, display } } });
-      if (display) ops.push({ insert: '\n' });
+  // Step 3: process segments RIGHT TO LEFT so earlier indices stay valid
+  segments.reverse().forEach(({ start, end, latex, display }) => {
+    const len = end - start;
+    quill.deleteText(start, len, 'user');
+    quill.insertEmbed(start, 'math', { latex, display }, 'user');
+    if (display) {
+      quill.insertText(start + 1, '\n', 'user');
     }
   });
 
-  // Ensure trailing newline
-  const last = ops[ops.length - 1];
-  if (!last || typeof last.insert !== 'string' || !last.insert.endsWith('\n')) {
-    ops.push({ insert: '\n' });
-  }
-
-  quill.setContents({ ops });
-  quill.setSelection(quill.getLength(), 0, Quill.sources.SILENT);
-
+  quill.setSelection(quill.getLength(), 0, 'silent');
   closePasteLatexPopup();
   document.getElementById('plx-input').value = '';
 }
