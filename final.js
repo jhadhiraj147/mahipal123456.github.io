@@ -438,28 +438,15 @@ function loadQuill() {
 // ========================================================
 // MATH EMBED (SELECTION → RENDER)
 // ========================================================
-
-
-async function renderSelectedMath(quill) {
-    const range = quill.getSelection();
-    if (!range || range.length === 0) return;
-
-    const latex = quill.getText(range.index, range.length).trim();
-    if (!latex) return;
-
-    // ✅ FORCE INLINE ALWAYS
-    const display = false;
-
-    quill.deleteText(range.index, range.length, Quill.sources.USER);
-
-    quill.insertEmbed(
-        range.index,
-        "math",
-        { latex, display },
-        Quill.sources.USER
-    );
-
-    quill.setSelection(range.index + 1, 0, Quill.sources.SILENT);
+// RENDER ALL MATH IN EDITOR VIA MATHJAX
+// ========================================================
+function renderEditorMath() {
+  if (!currentQuill) return;
+  const root = currentQuill.root;
+  if (window.MathJax && MathJax.typesetPromise) {
+    MathJax.typesetClear([root]);
+    MathJax.typesetPromise([root]).catch(err => console.error('MathJax:', err));
+  }
 }
 
 function initQuill() {
@@ -507,7 +494,7 @@ function initQuill() {
             container: "#toolbar-container",
             handlers: {
                 "render-math": function () {
-                    renderSelectedMath(currentQuill);
+                    renderEditorMath();
                 },
                 "paste-latex": function () {
                     openPasteLatexPopup();
@@ -2236,12 +2223,8 @@ async function addImageTop() {
 // Trigger MathJax after clicking Render
 // =====================================================
 document.addEventListener("click", function(e) {
-  if (e.target && e.target.classList.contains("ql-render-math")) {
-    setTimeout(() => {
-      if (window.MathJax) {
-        MathJax.typesetPromise();
-      }
-    }, 100);
+  if (e.target && (e.target.classList.contains("ql-render-math") || e.target.closest?.(".ql-render-math"))) {
+    renderEditorMath();
   }
 
   // Robust fallback for Paste LaTeX button (works even before Quill lazy-loads)
@@ -2302,124 +2285,23 @@ function insertLatexIntoEditor() {
 
 function doInsert(raw) {
   const quill = currentQuill;
-  quill.focus();
 
-  // Step 1: clear editor and insert all text as plain text
-  quill.setContents([{ insert: raw + '\n' }], 'silent');
+  // Insert as plain text at cursor (or end), then render all math with MathJax
+  const index = quill.getSelection()?.index ?? quill.getLength();
+  quill.insertText(index, '\n' + raw + '\n', 'user');
 
-  // Step 2: find ALL math segments ($...$ and $$...$$) with their character positions
-  const segments = [];
-  let i = 0;
-  while (i < raw.length) {
-    if (raw[i] === '$') {
-      if (raw[i + 1] === '$') {
-        // display math $$...$$
-        const end = raw.indexOf('$$', i + 2);
-        if (end !== -1) {
-          segments.push({
-            start: i,
-            end: end + 2,
-            latex: raw.slice(i + 2, end).trim(),
-            display: true
-          });
-          i = end + 2;
-          continue;
-        }
-      } else {
-        // inline math $...$
-        const end = raw.indexOf('$', i + 1);
-        if (end !== -1) {
-          segments.push({
-            start: i,
-            end: end + 1,
-            latex: raw.slice(i + 1, end).trim(),
-            display: false
-          });
-          i = end + 1;
-          continue;
-        }
-      }
-    }
-    i++;
-  }
-
-  // Step 3: process segments RIGHT TO LEFT so earlier indices stay valid
-  segments.reverse().forEach(({ start, end, latex, display }) => {
-    const len = end - start;
-    quill.deleteText(start, len, 'user');
-    quill.insertEmbed(start, 'math', { latex, display }, 'user');
-    if (display) {
-      quill.insertText(start + 1, '\n', 'user');
-    }
-  });
-
-  quill.setSelection(quill.getLength(), 0, 'silent');
   closePasteLatexPopup();
   const inp = document.getElementById('plx-input');
   if (inp) inp.value = '';
+
+  // Render all $...$ and $$...$$ in the editor via MathJax
+  setTimeout(() => {
+    if (window.MathJax && MathJax.typesetPromise) {
+      MathJax.typesetClear([quill.root]);
+      MathJax.typesetPromise([quill.root]).catch(err => console.error('MathJax:', err));
+    }
+  }, 50);
 }
 
-// =====================================================
-// LaTeX Renderer Section (standalone preview)
-// =====================================================
-function renderLatexPreview() {
-  const raw = document.getElementById('lr-input').value;
-  if (!raw.trim()) return;
-
-  const font = document.getElementById('lr-font').value;
-  const size = document.getElementById('lr-size').value;
-  const paper = document.getElementById('lr-paper');
-  const out   = document.getElementById('lr-output');
-
-  // Apply handwriting font and size to the paper area
-  paper.style.fontFamily = "'" + font + "', cursive, serif";
-  paper.style.fontSize   = size;
-
-  // Set the raw LaTeX text — MathJax will scan for $...$ delimiters
-  paper.textContent = raw;
-
-  out.style.display = 'block';
-
-  if (window.MathJax && MathJax.typesetPromise) {
-    MathJax.typesetClear([paper]);
-    MathJax.typesetPromise([paper]).catch(err => console.error('MathJax:', err));
-  }
-}
-
-function lrPrint() {
-  const paper = document.getElementById('lr-paper');
-  if (!paper) return;
-  const font = document.getElementById('lr-font').value;
-  const size = document.getElementById('lr-size').value;
-  // Collect any @font-face rules from the page so the handwriting font works in the new window
-  let fontFaces = '';
-  for (const sheet of document.styleSheets) {
-    try {
-      for (const rule of sheet.cssRules) {
-        if (rule instanceof CSSFontFaceRule) fontFaces += rule.cssText + '\n';
-      }
-    } catch(e) {}
-  }
-  const win = window.open('', '_blank');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>
-${fontFaces}
-body { margin: 40px; background: #fff; }
-.paper {
-  font-family: '${font}', cursive, serif;
-  font-size: ${size};
-  line-height: 2em;
-  color: #000f64;
-  white-space: pre-wrap;
-  word-break: break-word;
-  background-image: linear-gradient(#0c1d8c22 1px, transparent 1px);
-  background-size: 100% 2em;
-  padding: 32px 40px;
-  min-height: 80vh;
-}
-</style></head><body><div class="paper">${paper.innerHTML}</div></body></html>`);
-  win.document.close();
-  win.focus();
-  setTimeout(() => { win.print(); }, 600);
-}
+// End of file
 
