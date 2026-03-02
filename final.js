@@ -508,6 +508,9 @@ function initQuill() {
             handlers: {
                 "render-math": function () {
                     renderSelectedMath(currentQuill);
+                },
+                "paste-latex": function () {
+                    openPasteLatexPopup();
                 }
             }
         },
@@ -2265,36 +2268,40 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function insertLatexIntoEditor() {
   const raw = document.getElementById('plx-input').value;
-  if (!raw.trim() || !currentQuill) return;
+  if (!raw.trim()) return;
+
+  if (!currentQuill) {
+    alert('Editor is not ready yet. Please scroll down to the editor first, wait for it to load, then try again.');
+    return;
+  }
 
   const quill = currentQuill;
-  // Move cursor to end
-  const len = quill.getLength();
-  quill.setSelection(len, 0);
+  quill.focus();
 
-  // Tokenise: split on $$...$$ then $...$
-  // Token types: 'text', 'inline', 'display'
+  // Clear existing content and start fresh
+  quill.setContents([]);
+
+  // Tokenise the raw text into text/inline-math/display-math tokens
   const tokens = [];
   let remaining = raw;
 
   while (remaining.length > 0) {
-    // Check display math $$...$$
-    const dispStart = remaining.indexOf('$$');
-    const inlStart  = remaining.indexOf('$');
+    const dispIdx = remaining.indexOf('$$');
+    const inlIdx  = remaining.indexOf('$');
 
-    if (dispStart !== -1 && dispStart === inlStart) {
-      // display math comes first
-      if (dispStart > 0) tokens.push({ type: 'text', val: remaining.slice(0, dispStart) });
-      const dispEnd = remaining.indexOf('$$', dispStart + 2);
+    if (dispIdx !== -1 && dispIdx === inlIdx) {
+      // $$ display math comes first
+      if (dispIdx > 0) tokens.push({ type: 'text', val: remaining.slice(0, dispIdx) });
+      const dispEnd = remaining.indexOf('$$', dispIdx + 2);
       if (dispEnd === -1) { tokens.push({ type: 'text', val: remaining }); break; }
-      tokens.push({ type: 'display', val: remaining.slice(dispStart + 2, dispEnd) });
+      tokens.push({ type: 'display', val: remaining.slice(dispIdx + 2, dispEnd).trim() });
       remaining = remaining.slice(dispEnd + 2);
-    } else if (inlStart !== -1 && (dispStart === -1 || inlStart < dispStart)) {
-      // inline math comes first
-      if (inlStart > 0) tokens.push({ type: 'text', val: remaining.slice(0, inlStart) });
-      const inlEnd = remaining.indexOf('$', inlStart + 1);
+    } else if (inlIdx !== -1 && (dispIdx === -1 || inlIdx < dispIdx)) {
+      // $ inline math comes first
+      if (inlIdx > 0) tokens.push({ type: 'text', val: remaining.slice(0, inlIdx) });
+      const inlEnd = remaining.indexOf('$', inlIdx + 1);
       if (inlEnd === -1) { tokens.push({ type: 'text', val: remaining }); break; }
-      tokens.push({ type: 'inline', val: remaining.slice(inlStart + 1, inlEnd) });
+      tokens.push({ type: 'inline', val: remaining.slice(inlIdx + 1, inlEnd).trim() });
       remaining = remaining.slice(inlEnd + 1);
     } else {
       tokens.push({ type: 'text', val: remaining });
@@ -2302,36 +2309,27 @@ function insertLatexIntoEditor() {
     }
   }
 
-  // Insert tokens into Quill
-  let index = quill.getLength() - 1; // before trailing newline
-  // clear selection to end
-  quill.setSelection(index, 0);
+  // Build a Quill Delta from tokens
+  let ops = [];
 
   tokens.forEach(token => {
     if (token.type === 'text') {
-      const lines = token.val.split('\n');
-      lines.forEach((line, i) => {
-        if (line.length > 0) {
-          quill.insertText(index, line, Quill.sources.USER);
-          index += line.length;
-        }
-        if (i < lines.length - 1) {
-          quill.insertText(index, '\n', Quill.sources.USER);
-          index += 1;
-        }
-      });
+      if (token.val) ops.push({ insert: token.val });
     } else {
       const display = token.type === 'display';
-      quill.insertEmbed(index, 'math', { latex: token.val.trim(), display }, Quill.sources.USER);
-      index += 1;
-      if (display) {
-        quill.insertText(index, '\n', Quill.sources.USER);
-        index += 1;
-      }
+      ops.push({ insert: { math: { latex: token.val, display } } });
+      if (display) ops.push({ insert: '\n' });
     }
   });
 
-  quill.setSelection(index, 0, Quill.sources.SILENT);
+  // Ensure document ends with newline
+  if (ops.length === 0 || typeof ops[ops.length - 1].insert !== 'string' || !ops[ops.length - 1].insert.endsWith('\n')) {
+    ops.push({ insert: '\n' });
+  }
+
+  quill.setContents({ ops });
+  quill.setSelection(quill.getLength(), 0, Quill.sources.SILENT);
+
   closePasteLatexPopup();
   document.getElementById('plx-input').value = '';
 }
