@@ -2355,13 +2355,8 @@ function doInsert(raw) {
   const inp = document.getElementById('plx-input');
   if (inp) inp.value = '';
 
-  // Render all $...$ and $$...$$ in the editor via MathJax
-  setTimeout(() => {
-    if (window.MathJax && MathJax.typesetPromise) {
-      MathJax.typesetClear([quill.root]);
-      MathJax.typesetPromise([quill.root]).catch(err => console.error('MathJax:', err));
-    }
-  }, 50);
+  // Auto-open rendered preview immediately
+  setTimeout(() => renderEditorMath(), 80);
 }
 
 // End of file
