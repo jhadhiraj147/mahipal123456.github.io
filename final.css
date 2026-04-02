@@ -2399,36 +2399,41 @@ display:none;
 }
 #final_page {
     position: relative;
-    width: 794px; /* Standard A4 paper width 96dpi */
-    max-width: 100%;
+    width: 794px;           /* A4 width @ 96dpi */
+    height: 1123px;         /* A4 height @ 96dpi — FIXED so autoPaginate has a real boundary */
+    flex-shrink: 0;
     
     padding: 10px;
     box-sizing: border-box;
-    /* resize: horizontal removed because paper templates have fixed dimensional constraints */
-    overflow: hidden !important;
+    overflow: hidden !important;  /* Paper is a hard boundary — no scroll, text flows to next page */
     scrollbar-width: none;
-    -ms-overflow-style: none; /* IE and Edge */
+    -ms-overflow-style: none;
     
     background: white;
     border: 1px solid #000000;
+    
+    /* Zoom is applied via transform:scale() in JS — set origin to top-center */
+    transform-origin: top center;
 }
 
 /* Force Quill inner editor to respect physical boundaries without scrolling */
 .ql-editor {
     overflow-y: hidden !important;
+    max-height: 100% !important; /* Constrained by parent #final_page fixed height */
 }
 
-#outer-container{
+#outer-container {
     border-top: 2px solid;
     padding-top: 20px;
     
+    /* Scrollable viewport — does NOT get zoomed itself */
     height: 85vh;
-    /* display: flex;
-    overflow-wrap: anywhere;
+    overflow: auto;
     
-    flex-wrap: wrap;
-    justify-content: space-around; */
-    overflow: scroll;
+    /* Center the paper horizontally */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 /*button typ2 - Compact strip version*/

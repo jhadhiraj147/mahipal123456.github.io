@@ -1005,50 +1005,50 @@ function setCSSVariable(variable, value) {
             setTimeout(autoPaginate, 800);
         });
 
-        // Workspace Zoom functionality
+        // Workspace Zoom functionality — scales the physical paper, not the viewport
         const wsZoomSlider = document.getElementById('workspace-zoom');
         const wsZoomVal = document.getElementById('workspace-zoom-val');
+
+        function applyWorkspaceZoom(ratio) {
+            const paper = document.getElementById('final_page');
+            if (!paper) return;
+            // Scale the paper element itself — origin is top-center
+            // The outer-container scroll viewport remains unchanged so you can scroll when zoomed in
+            paper.style.transform = `scale(${ratio})`;
+            // When scaled, the paper visually occupies ratio * 1123px height
+            // We need to set a margin-bottom placeholder so the container knows the visual size
+            const scaledHeight = Math.round(1123 * ratio);
+            const scaledWidth  = Math.round(794 * ratio);
+            paper.style.marginBottom = `${scaledHeight - 1123}px`;
+            paper.style.marginRight  = `${Math.max(0, scaledWidth - 794)}px`;
+        }
+
         if (wsZoomSlider && wsZoomVal) {
             wsZoomSlider.addEventListener('input', (e) => {
                 const ratio = parseFloat(e.target.value);
                 wsZoomVal.textContent = Math.round(ratio * 100) + '%';
-                
-                // We scale the wrapper so we don't break html2canvas on #final_page
-                const wrapper = document.getElementById('outer-container');
-                if (wrapper) {
-                    wrapper.style.zoom = ratio;
-                }
+                applyWorkspaceZoom(ratio);
             });
         }
         
-        // Auto fit to screen vertically on load
+        // Auto fit to screen: pick a scale so the full A4 paper height fits in the viewport
         function autoFitToScreen() {
             if (!wsZoomSlider) return;
             
-            // If the inline script already calculated a zoom to prevent FOUC, use it exactly
-            if (window._initialZoomPreset && !window._zoomInitialized) {
-                wsZoomSlider.value = window._initialZoomPreset;
-                wsZoomVal.textContent = Math.round(window._initialZoomPreset * 100) + '%';
-                window._zoomInitialized = true;
-                return;
-            }
-
             const container = document.getElementById('outer-container');
-            const page = document.getElementById('final_page');
+            if (!container) return;
             
-            if (container && page) {
-                // Determine available height vs paper height
-                const availableHeight = container.clientHeight - 80; // Account for padding/controls
-                const paperHeight = page.offsetHeight || 1123; // fallback A4 height
-                
-                if (availableHeight < paperHeight && paperHeight > 0) {
-                    let desiredZoom = availableHeight / paperHeight;
-                    desiredZoom = Math.max(0.4, Math.min(1.0, desiredZoom)); // clamp
-                    
-                    // Snap slider to calculated zoom
-                    wsZoomSlider.value = desiredZoom;
-                    wsZoomSlider.dispatchEvent(new Event('input'));
-                }
+            const A4_HEIGHT = 1123; // px at 96dpi
+            const available = container.clientHeight - 60; // subtract padding
+            
+            if (available > 0 && available < A4_HEIGHT) {
+                let ratio = available / A4_HEIGHT;
+                ratio = Math.max(0.3, Math.min(1.0, ratio));
+                wsZoomSlider.value = ratio;
+                wsZoomVal.textContent = Math.round(ratio * 100) + '%';
+                applyWorkspaceZoom(ratio);
+            } else {
+                applyWorkspaceZoom(parseFloat(wsZoomSlider.value));
             }
         }
         
