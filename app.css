@@ -103,15 +103,28 @@ body {
   overflow-x: hidden;
 }
 
-/* ── Sidebar Bottom Dock ──────────────────────────────── */
+/* ═══════════════════════════════════════════════════════
+   SIDEBAR BOTTOM DOCK — Premium Glass Hub
+═══════════════════════════════════════════════════════ */
 #sidebar-dock {
   flex-shrink: 0;
-  border-top: 1px solid #1e1e2e;
-  background: #0a0a14;
-  padding: 10px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(10, 10, 20, 0.8);
+  backdrop-filter: blur(10px);
+  padding: 14px 10px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  position: relative;
+}
+/* Neon Accent Top Line */
+#sidebar-dock::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #7c3aed, #0ea5e9, transparent);
+  opacity: 0.6;
 }
 
 .sdock-row {
@@ -123,72 +136,80 @@ body {
 
 .sdock-btn {
   flex: 1;
-  height: 32px;
-  border: 1px solid #28283c;
-  border-radius: 7px;
-  background: #1b1b29;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
   color: #ccc;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
-  padding: 0;
+  transition: all 0.2s ease;
 }
-.sdock-btn:hover { background: #28283c; color: #fff; }
+.sdock-btn:hover { 
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255,255,255,0.25);
+  transform: translateY(-1px);
+}
+.sdock-btn:active { transform: translateY(0); }
 
 .sdock-danger {
-  background: #1a0707;
-  border-color: #5a1a1a;
-  color: #ff6b6b;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: #f87171;
 }
-.sdock-danger:hover { background: #2d0a0a; color: #ff4757; }
+.sdock-danger:hover { background: #ef4444; color: #fff; border-color: #f87171; }
 
 .sdock-pageno {
-  flex: 1.2;
-  height: 32px;
-  background: #161623;
-  border: 1px solid #28283c;
-  border-radius: 7px;
+  flex: 1.3;
+  height: 34px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: #38bdf8;
   font-weight: 700;
   font-size: 13px;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
 }
 
 .sdock-zoom-label {
-  flex: 1.5;
-  height: 32px;
-  background: #161623;
-  border: 1px solid #28283c;
-  border-radius: 7px;
+  flex: 1.8;
+  height: 34px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #aaa;
-  font-size: 12px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
   gap: 4px;
 }
 
 .sdock-download {
   width: 100%;
-  height: 36px;
-  background: #200e4a;
-  color: #d4b8ff;
-  border: 1px solid #3d2382;
-  border-radius: 8px;
+  height: 38px;
+  background: linear-gradient(135deg, #4c1d95, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 9px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 0 10px;
   cursor: pointer;
-  outline: none;
   appearance: none;
-  -webkit-appearance: none;
+  text-align-last: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(76, 29, 149, 0.3);
 }
-.sdock-download:hover { background: #2d1468; }
+.sdock-download:hover { transform: translateY(-1px); box-shadow: 0 6px 15px rgba(76, 29, 149, 0.5); }
 
 
 /* Sidebar header — sticky at top while scrolling */

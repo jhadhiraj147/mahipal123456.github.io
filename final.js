@@ -665,13 +665,15 @@ async function autoPaginate() {
         let targetPageId;
         
         if (nextIndex < pageOrder.length) {
-            // Pour into the EXISTING next page — prepend overflow to what's already there
             targetPageId = pageOrder[nextIndex];
             const nextPageData = await loadPage(targetPageId);
             
-            // Merge: overflow goes BEFORE existing content
+            // ROBUND MERGE: Prepend overflow to existing using official Delta.concat
             const existingDelta = nextPageData.quillDelta || { ops: [{ insert: '\n' }] };
-            const mergedDelta = { ops: [...overflowDelta.ops, ...existingDelta.ops] };
+            const Delta = currentQuill.getContents().constructor;
+            const d1 = new Delta(overflowDelta.ops);
+            const d2 = new Delta(existingDelta.ops);
+            const mergedDelta = d1.concat(d2);
             
             const updatedPage = { ...nextPageData, quillDelta: mergedDelta, quillHTML: '' };
             cachePage(targetPageId, updatedPage);
@@ -691,10 +693,14 @@ async function autoPaginate() {
             cachePage(targetPageId, { id: targetPageId, ...newPageData });
         }
         
-        // 5. Move to that next page and let recursive autoPaginate handle the rest
+        // 5. Move to that next page
+        window._isLoadingPage = true;
         await showPage(currentPageIndex + 1, { skipSave: true });
         
-        // Cursor to end of the newly loaded overflow content
+        setTimeout(() => {
+            window._isLoadingPage = false;
+        }, 150);
+        
         if (currentQuill) {
             currentQuill.focus();
             currentQuill.setSelection(currentQuill.getLength(), 0, Quill.sources.SILENT);
@@ -1062,6 +1068,36 @@ function setCSSVariable(variable, value) {
 
             wsZoomSlider.value = ratio;
             applyWorkspaceZoom(ratio);
+        }
+
+        // Auto-fit: shrink paper so the ENTIRE page (both W and H) fits in the viewport
+        function autoFitToScreen() {
+            if (!wsZoomSlider || !wsZoomVal) return;
+            const container = document.getElementById('outer-container');
+            if (!container) return;
+
+            const A4_W = 794;
+            const A4_H = 1123;
+            // Available space in the scrollable viewport (subtract padding)
+            const availW = container.clientWidth  - 48;
+            const availH = container.clientHeight - 60;
+
+            const ratioW = availW / A4_W;
+            const ratioH = availH / A4_H;
+            let ratio = Math.min(ratioW, ratioH);
+            ratio = Math.max(0.25, Math.min(1.5, ratio));
+
+            wsZoomSlider.value = ratio;
+            applyWorkspaceZoom(ratio);
+        }
+
+        window.addEventListener('resize', autoFitToScreen);
+        setTimeout(autoFitToScreen, 300);
+
+        // Sidebar/Container resize observer
+        const containerElem = document.getElementById('outer-container');
+        if (containerElem) {
+            new ResizeObserver(() => autoFitToScreen()).observe(containerElem);
         }
 
         // Run once the DOM has settled
