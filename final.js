@@ -613,6 +613,14 @@ async function autoPaginate() {
     isPaginating = true;
     
     try {
+        const paper = document.getElementById('final_page');
+        const oldHeight = paper.style.height || '';
+        const oldOverflow = paper.style.overflow || '';
+        
+        // UNCLAMP: Force paper to expand visually so getBounds isn't capped by browser rendering engine
+        paper.style.setProperty('height', 'auto', 'important');
+        paper.style.setProperty('overflow', 'visible', 'important');
+
         const maxHeight = PAPER_CONTENT_HEIGHT;
         const totalLength = currentQuill.getLength();
         let overflowIndex = -1;
@@ -641,6 +649,13 @@ async function autoPaginate() {
             overflowIndex = Math.floor(totalLength * 0.8);
         }
 
+        // RESTORE CLAMP
+        if (oldHeight) paper.style.setProperty('height', oldHeight);
+        else paper.style.removeProperty('height');
+        
+        if (oldOverflow) paper.style.setProperty('overflow', oldOverflow);
+        else paper.style.removeProperty('overflow');
+        
         // Backtrack to avoid splitting a word mid-character (find last space)
         const textToOverflow = currentQuill.getText(Math.max(0, overflowIndex - 30), 30);
         const lastSpace = textToOverflow.lastIndexOf(' ');
