@@ -100,8 +100,8 @@
           <div class="ctrl-row">
             <label>Font Size</label>
             <div class="slider-container">
-              <input type="range" id="font-size-input" min="10" max="100" value="16" step="0.1">
-              <span id="font-size-input-value">16px</span>
+              <input type="range" id="font-size-input" min="10" max="100" value="20" step="0.1">
+              <span id="font-size-input-value">20px</span>
             </div>
           </div>
 
@@ -151,7 +151,7 @@
           <!-- Handwriting style picker -->
           <div class="ctrl-section-label">Handwriting Style</div>
           <div class="font-picker" id="fontPicker">
-            <div class="font-option active" data-font="AnotherFont">Style 1</div>
+            <div class="font-option" data-font="AnotherFont">Style 1</div>
             <div class="font-option" data-font="CustomFont">Style 2</div>
             <div class="font-option" data-font="font3">Style 3</div>
             <div class="font-option" data-font="font4">Style 4</div>
@@ -164,7 +164,7 @@
             <div class="font-option" data-font="font11">Style 11</div>
             <div class="font-option" data-font="font12">Style 12</div>
             <div class="font-option" data-font="font13">Style 13</div>
-            <div class="font-option" data-font="font14">हस्तलेख 14</div>
+            <div class="font-option active" data-font="font14">Style 14</div>
             <div class="font-option" data-font="font15">Style 15</div>
             <div class="font-option" data-font="font16">Style 16</div>
             <div class="font-option" data-font="font17">Style 17</div>
@@ -255,7 +255,7 @@
           
           <hr style="border: 0; border-top: 1px solid #242436; margin: 16px 0;">
           <div class="ctrl-row">
-            <label for="margin-top-input">Top Margin</label>
+            <label for="margin-top-input">Page Top Padding</label>
             <div class="slider-container">
               <input type="range" id="margin-top-input" min="0" max="200" value="0" step="0.1">
               <span id="margin-top-input-value">0px</span>
@@ -263,7 +263,7 @@
           </div>
 
           <div class="ctrl-row">
-            <label for="margin-left-input">Left Margin</label>
+            <label for="margin-left-input">Page Left Padding</label>
             <div class="slider-container">
               <input type="range" id="margin-left-input" min="0" max="200" value="0" class="margin-input" step="0.1">
               <span id="margin-left-input-value">0px</span>
@@ -285,7 +285,7 @@
           </div>
 
           <div class="ctrl-row">
-            <label for="height-input">Top Margin Height</label>
+            <label for="height-input">Header Space Height</label>
             <div class="slider-container">
               <input type="range" id="height-input" min="0" max="100" value="1">
               <span id="height-input-value">1%</span>
@@ -293,7 +293,7 @@
           </div>
 
           <div class="ctrl-row">
-            <label for="width-input">Left Margin Width</label>
+            <label for="width-input">Sidebar Space Width</label>
             <div class="slider-container">
               <input type="range" id="width-input" min="0" max="100" value="2">
               <span id="width-input-value">2%</span>
