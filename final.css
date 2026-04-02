@@ -2425,8 +2425,8 @@ display:none;
     border-top: 2px solid;
     padding-top: 20px;
     
-    /* Scrollable viewport — does NOT get zoomed itself */
-    height: 85vh;
+    /* Fill the full main-canvas height — nothing is below anymore */
+    height: 100%;
     overflow: auto;
     
     /* Center the paper horizontally */

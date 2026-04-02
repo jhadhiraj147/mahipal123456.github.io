@@ -76,7 +76,9 @@ body {
   position: relative;
   background: #0f0f1a;
   border-right: 2px solid #1e1e2e;
-  overflow-y: auto;
+  /* Use flex column so dock sticks to bottom */
+  display: flex;
+  flex-direction: column;
   overflow-x: hidden;
   transition: width 0.2s ease, flex-basis 0.2s ease;
   z-index: 10;
@@ -89,9 +91,105 @@ body {
 }
 #sidebar.collapsed #ctrl-tabs,
 #sidebar.collapsed #ctrl-panels-area,
-#sidebar.collapsed #sidebar-header span {
+#sidebar.collapsed #sidebar-header span,
+#sidebar.collapsed #sidebar-dock {
   display: none !important;
 }
+
+/* ctrl-panels-area grows to fill available space */
+#ctrl-panels-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Sidebar Bottom Dock ──────────────────────────────── */
+#sidebar-dock {
+  flex-shrink: 0;
+  border-top: 1px solid #1e1e2e;
+  background: #0a0a14;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sdock-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.sdock-btn {
+  flex: 1;
+  height: 32px;
+  border: 1px solid #28283c;
+  border-radius: 7px;
+  background: #1b1b29;
+  color: #ccc;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+}
+.sdock-btn:hover { background: #28283c; color: #fff; }
+
+.sdock-danger {
+  background: #1a0707;
+  border-color: #5a1a1a;
+  color: #ff6b6b;
+}
+.sdock-danger:hover { background: #2d0a0a; color: #ff4757; }
+
+.sdock-pageno {
+  flex: 1.2;
+  height: 32px;
+  background: #161623;
+  border: 1px solid #28283c;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.sdock-zoom-label {
+  flex: 1.5;
+  height: 32px;
+  background: #161623;
+  border: 1px solid #28283c;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
+  font-size: 12px;
+  gap: 4px;
+}
+
+.sdock-download {
+  width: 100%;
+  height: 36px;
+  background: #200e4a;
+  color: #d4b8ff;
+  border: 1px solid #3d2382;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 10px;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.sdock-download:hover { background: #2d1468; }
+
 
 /* Sidebar header — sticky at top while scrolling */
 #sidebar-header {
