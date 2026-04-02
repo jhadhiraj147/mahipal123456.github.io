@@ -168,7 +168,19 @@ function getCachedPage(id) {
 // ========================================================
 // NOTEBOOK INIT
 // ========================================================
+async function clearAllFromDB() {
+    const db = await getDB();
+    return new Promise((resolve) => {
+        const tx = db.transaction(["meta", "pages"], "readwrite");
+        tx.objectStore("meta").clear();
+        tx.objectStore("pages").clear();
+        tx.oncomplete = resolve;
+    });
+}
 async function initNotebook() {
+    // Explicit User Requirement: "when i refresh the page... it should be all vanished"
+    await clearAllFromDB(); 
+
     notebookMeta = await getNotebookMeta();
 
     if (!notebookMeta) {
@@ -323,12 +335,14 @@ async function createNewPageInternal() {
     };
 
     const id = await addPageToDB(defaultContent);
-    pageOrder.push(id);
+    
+    // Insert immediately after current page instead of at the very end
+    pageOrder.splice(currentPageIndex + 1, 0, id);
     await saveNotebookMeta();
 
     cachePage(id, { id, ...defaultContent });
 
-    currentPageIndex = pageOrder.length - 1;
+    currentPageIndex = currentPageIndex + 1;
     await showPage(currentPageIndex, { skipSave: true });
 }
 
@@ -374,7 +388,11 @@ async function deleteCurrentPage() {
 // SCROLL-NAV
 // ========================================================
 function nextPage() {
-    if (currentPageIndex + 1 < pageOrder.length) showPage(currentPageIndex + 1);
+    if (currentPageIndex + 1 < pageOrder.length) {
+        showPage(currentPageIndex + 1);
+    } else {
+        createNewPageInternal();
+    }
 }
 
 function prevPage() {
@@ -462,6 +480,28 @@ async function renderSelectedMath(quill) {
     quill.setSelection(range.index + 1, 0, Quill.sources.SILENT);
 }
 
+async function renderAllMath(quill) {
+    const text = quill.getText();
+    // Match $$...$$ or $...$
+    const regex = /\$\$([\s\S]+?)\$\$|\$([^\$]+?)\$/g;
+    
+    let match;
+    let offset = 0;
+    while ((match = regex.exec(text)) !== null) {
+        let start = match.index - offset;
+        let length = match[0].length;
+        
+        let isBlock = match[0].startsWith('$$');
+        let latex = (isBlock ? match[1] : match[2]).trim();
+
+        quill.deleteText(start, length, Quill.sources.USER);
+        quill.insertEmbed(start, "math", { latex, display: false }, Quill.sources.USER);
+        
+        // Compensate index for the fact that we deleted 'length' chars and inserted 1 char
+        offset += (length - 1);
+    }
+}
+
 function initQuill() {
     if (currentQuill) return;
 
@@ -508,6 +548,9 @@ function initQuill() {
             handlers: {
                 "render-math": function () {
                     renderSelectedMath(currentQuill);
+                },
+                "render-all-math": function () {
+                    renderAllMath(currentQuill);
                 }
             }
         },
@@ -526,7 +569,110 @@ function initQuill() {
 
     currentQuill.root.id = "output-inner-container";
     
+    // Listen for text changes to trigger auto-pagination
+    let paginationTimeout;
+    currentQuill.on('text-change', (delta, oldDelta, source) => {
+        if (source === 'user' || source === 'api') {
+            clearTimeout(paginationTimeout);
+            paginationTimeout = setTimeout(() => {
+                autoPaginate();
+            }, 100); // Trigger almost instantly to make pasting feel snappy
+        }
+    });
 }
+
+// ========================================================
+// TRUE WYSIWYG AUTO-PAGINATION
+// ========================================================
+let isPaginating = false;
+
+async function autoPaginate() {
+    if (isPaginating || !currentQuill) return;
+    
+    const editorNode = currentQuill.root;
+    // We check if the scrollHeight significantly exceeds the physically constrained clientHeight
+    if (editorNode.scrollHeight <= editorNode.clientHeight + 10) return;
+    
+    isPaginating = true;
+    
+    try {
+        const maxHeight = editorNode.clientHeight;
+        const totalLength = currentQuill.getLength();
+        let overflowIndex = -1;
+        
+        // Fast search: jump by 10s to find where the text visually crosses the boundary
+        for (let i = 10; i < totalLength; i += 10) {
+            const bounds = currentQuill.getBounds(i);
+            if (bounds && bounds.bottom > maxHeight) {
+                overflowIndex = i;
+                break;
+            }
+        }
+        
+        // Backtrack to find exact char
+        if (overflowIndex !== -1) {
+            for (let i = overflowIndex - 10; i <= overflowIndex; i++) {
+                if (i < 0) continue;
+                const bounds = currentQuill.getBounds(i);
+                if (bounds && bounds.bottom > maxHeight) {
+                    overflowIndex = i;
+                    break;
+                }
+            }
+        } else {
+            // Failsafe fallback
+            overflowIndex = Math.floor(totalLength * 0.8);
+        }
+
+        // Backtrack further to avoid splitting a word in half (find last space)
+        const textToOverflow = currentQuill.getText(Math.max(0, overflowIndex - 30), 30);
+        const lastSpace = textToOverflow.lastIndexOf(' ');
+        if (lastSpace !== -1 && lastSpace > 10) {
+            overflowIndex = (overflowIndex - 30) + lastSpace + 1;
+        }
+
+        // 1. Cut the extra content
+        const overflowDelta = currentQuill.getContents(overflowIndex, totalLength - overflowIndex);
+        currentQuill.deleteText(overflowIndex, totalLength - overflowIndex, Quill.sources.SILENT);
+        
+        // 2. Save current page perfectly cleanly
+        await saveCurrentPage();
+        
+        // 3. Create the *new* page and put the overflow there
+        const newPageData = {
+            title: document.getElementById('top-margin').innerHTML || "",
+            side: document.getElementById('left-margin-in').innerHTML || "",
+            quillDelta: overflowDelta,
+            quillHTML: "",
+            images: [] // Images don't auto-flow yet due to complex absolute pos coords
+        };
+        
+        const newId = await addPageToDB(newPageData);
+        
+        // 4. Splice it into current order immediately after this page
+        pageOrder.splice(currentPageIndex + 1, 0, newId);
+        await saveNotebookMeta();
+        cachePage(newId, { id: newId, ...newPageData });
+        
+        // 5. Jump user to the newly created page
+        await showPage(currentPageIndex + 1, { skipSave: true });
+        
+        // Ensure cursor is retained at the end of the newly ported text!
+        if (currentQuill) {
+            currentQuill.focus();
+            currentQuill.setSelection(currentQuill.getLength(), 0, Quill.sources.SILENT);
+        }
+        
+        // 6. If they pasted a 50-page essay, recursively chunk again
+        setTimeout(() => autoPaginate(), 50);
+        
+    } catch(err) {
+        console.error("Auto-Pagination Failed:", err);
+    } finally {
+        isPaginating = false;
+    }
+}
+
 
 
 // ========================================================
@@ -821,20 +967,83 @@ function setCSSVariable(variable, value) {
         
 
 
+
+        // Listen for Page Format changes
+        document.getElementById('page-size-select')?.addEventListener('change', (e) => {
+            let ratio = 0.707; // A4 (1 / 1.414)
+            if (e.target.value === 'letter') ratio = 0.772; // US Letter (8.5 / 11)
+            if (e.target.value === 'foolscap') ratio = 0.615; // Legal (8 / 13)
+            
+            setCSSVariable('page-aspect-ratio', ratio);
+            
+            // Re-calc flow if sizes shrink
+            setTimeout(autoPaginate, 800);
+        });
+
+        // Workspace Zoom functionality
+        const wsZoomSlider = document.getElementById('workspace-zoom');
+        const wsZoomVal = document.getElementById('workspace-zoom-val');
+        if (wsZoomSlider && wsZoomVal) {
+            wsZoomSlider.addEventListener('input', (e) => {
+                const ratio = parseFloat(e.target.value);
+                wsZoomVal.textContent = Math.round(ratio * 100) + '%';
+                
+                // We scale the wrapper so we don't break html2canvas on #final_page
+                const wrapper = document.getElementById('outer-container');
+                if (wrapper) {
+                    wrapper.style.zoom = ratio;
+                }
+            });
+        }
+        
+        // Auto fit to screen vertically on load
+        function autoFitToScreen() {
+            if (!wsZoomSlider) return;
+            
+            // If the inline script already calculated a zoom to prevent FOUC, use it exactly
+            if (window._initialZoomPreset && !window._zoomInitialized) {
+                wsZoomSlider.value = window._initialZoomPreset;
+                wsZoomVal.textContent = Math.round(window._initialZoomPreset * 100) + '%';
+                window._zoomInitialized = true;
+                return;
+            }
+
+            const container = document.getElementById('outer-container');
+            const page = document.getElementById('final_page');
+            
+            if (container && page) {
+                // Determine available height vs paper height
+                const availableHeight = container.clientHeight - 80; // Account for padding/controls
+                const paperHeight = page.offsetHeight || 1123; // fallback A4 height
+                
+                if (availableHeight < paperHeight && paperHeight > 0) {
+                    let desiredZoom = availableHeight / paperHeight;
+                    desiredZoom = Math.max(0.4, Math.min(1.0, desiredZoom)); // clamp
+                    
+                    // Snap slider to calculated zoom
+                    wsZoomSlider.value = desiredZoom;
+                    wsZoomSlider.dispatchEvent(new Event('input'));
+                }
+            }
+        }
+        
+        // Run once after initial render
+        setTimeout(autoFitToScreen, 100);
+
         // Toggle background image
-        let isBackgroundOn = true;
+        let isBackgroundOn = false;  // matches CSS default (--background-lines: none)
 
         function toggleBackground() {
-            
-                isBackgroundOn = !isBackgroundOn;
-            
-        
+            const checkbox = document.getElementById('bg-toggle');
+            isBackgroundOn = checkbox.checked;   // read directly — no toggle drift
+
             const backgroundValue = isBackgroundOn
-                ? 'linear-gradient(#00000066 0.05em, transparent 0.1em)'
+                ? 'linear-gradient(#0c1d8c66 0.15em, transparent 0.1em)'
                 : 'none';
-        
+
             setCSSVariable('background-lines', backgroundValue);
         }
+
         
         
         
@@ -1629,8 +1838,13 @@ async function renderPageForExport(pageData) {
 }
 
 async function captureExportCanvas() {
-  const canvas = await html2canvas(captureRoot, {
-    scale: 1.5,
+  const outer = document.getElementById('outer-container');
+  const oldZoom = outer ? outer.style.zoom : '';
+  if (outer) outer.style.zoom = '1';
+
+  try {
+      const canvas = await html2canvas(captureRoot, {
+        scale: 1.5,
     backgroundColor: null,
     useCORS: true,
     removeContainer: false, // REQUIRED
@@ -1685,6 +1899,9 @@ async function captureExportCanvas() {
   // ================================
   
   return canvas;
+  } finally {
+      if (outer) outer.style.zoom = oldZoom;
+  }
 }
 
 
@@ -1712,13 +1929,15 @@ const ProgressLoader = {
 // ========================================================
 async function handleDownload(value) {
     await saveCurrentPage();
-  if (value === "image") {
+  if (value === "pdf-current") {
     await loadScript("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js");
-    downloadCurrentPageImage();
+    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+    downloadCurrentPagePDF();
   } 
-  else if (value === "all-images") {
+  else if (value === "pdf-all") {
     await loadScript("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js");
-    downloadAllPagesAsImages();
+    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+    downloadAllPagesAsPDF();
   }
 
   // Reset select dropdown
@@ -1728,12 +1947,13 @@ async function handleDownload(value) {
 // ========================================================
 // PDF EXPORT (NOW USES captureShadowWithEffect)
 // ========================================================
-async function downloadAllPagesAsImages() {
-  ProgressLoader.show("Exporting Images");
+async function downloadAllPagesAsPDF() {
+  ProgressLoader.show("Exporting PDF");
 
   initCaptureRoot();
 
   const total = pageOrder.length;
+  let pdf = null;
 
   for (let i = 0; i < total; i++) {
     const percent = Math.round((i / total) * 100);
@@ -1741,31 +1961,30 @@ async function downloadAllPagesAsImages() {
     ProgressLoader.update(
       percent,
       `Rendering page ${i + 1} of ${total}`,
-      "Capturing page as image"
+      "Capturing page for PDF"
     );
 
     const pageData = await loadPage(pageOrder[i]);
     await renderPageForExport(pageData);
 
     const canvas = await captureExportCanvas();
+    const imgData = canvas.toDataURL("image/png");
 
-    // PNG preferred for text quality (change to JPEG if size matters)
-    const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
-    const url = URL.createObjectURL(blob);
-
-    // Trigger download immediately (no accumulation)
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `page_${i + 1}.png`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (i === 0) {
+      pdf = new window.jspdf.jsPDF('p', 'pt', [canvas.width, canvas.height]);
+    } else {
+      pdf.addPage([canvas.width, canvas.height], 'p');
+      pdf.setPage(i + 1);
+    }
+    
+    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
     canvas.width = canvas.height = 0;
 
- 
     await new Promise(r => setTimeout(r, 0));
   }
 
-  ProgressLoader.update(100, "Completed", "All images downloaded");
+  pdf.save("assignment.pdf");
+  ProgressLoader.update(100, "Completed", "PDF downloaded successfully");
   ProgressLoader.hide();
 
   const closeBtn = document.querySelector('.modern-close-btn');
@@ -1794,8 +2013,8 @@ function waitForRender() {
 // ========================================================
 // SINGLE PAGE IMAGE EXPORT (USES SAME CAPTURE LOGIC)
 // ========================================================
-async function downloadCurrentPageImage() {
-  ProgressLoader.show("Exporting Page Image");
+async function downloadCurrentPagePDF() {
+  ProgressLoader.show("Exporting Page As PDF");
 
   ProgressLoader.update(30, "Preparing page");
 
@@ -1809,14 +2028,12 @@ async function downloadCurrentPageImage() {
   await renderPageForExport(pageData);
   const canvas = await captureExportCanvas();
 
-  ProgressLoader.update(90, "Finalizing image");
+  ProgressLoader.update(90, "Finalizing PDF");
 
-    const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
-    const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "current_page_image.png";
-  a.click();
+  const pdf = new window.jspdf.jsPDF('p', 'pt', [canvas.width, canvas.height]);
+  const imgData = canvas.toDataURL("image/png");
+  pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+  pdf.save("current_page.pdf");
 
   ProgressLoader.hide();
 }

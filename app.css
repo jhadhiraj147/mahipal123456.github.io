@@ -1,0 +1,614 @@
+/* ============================================================
+   app.css  –  focused side-by-side workspace: sidebar + paper
+   Loaded LAST so it overrides final.css / shared.css
+   ============================================================ */
+
+/* ── Reset to a fixed-height app shell ───────────────────── */
+html, body {
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background: #0d0d12;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  color: #e0e0e0;
+}
+
+/* ── Hide all landing-page / marketing sections ─────────── */
+.hero-section,
+.hero-container,
+#about,
+#features,
+#sample-results,
+#help-guide,
+#support,
+support-us,
+#how-it-works,
+#Contact,
+#policies,
+#terms_conditions,
+my-footer,
+.heading,
+#section2 {
+  display: none !important;
+}
+
+header.modern-header {
+  background: transparent;
+  border-bottom: none;
+  padding: 0;
+  /* The inner my-navbar is position:fixed so this takes no height */
+  height: 0;
+  overflow: visible;
+}
+
+/* Hide navbar entirely — pure tool mode */
+header.modern-header,
+.navbar,
+my-navbar {
+  display: none !important;
+}
+
+/* No navbar = no padding needed */
+body {
+  padding-top: 0 !important;
+  display: flex;
+  flex-direction: column;
+}
+
+
+/* ── App shell: full-height horizontal split ─────────────── */
+#app-shell {
+  flex: 1 1 0;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LEFT SIDEBAR
+═══════════════════════════════════════════════════════════ */
+#sidebar {
+  flex: 0 0 260px;
+  width: 260px;
+  min-width: 0;
+  position: relative;
+  background: #0f0f1a;
+  border-right: 2px solid #1e1e2e;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.2s ease, flex-basis 0.2s ease;
+  z-index: 10;
+}
+
+#sidebar.collapsed {
+  flex: 0 0 40px !important;
+  width: 40px !important;
+  overflow: hidden;
+}
+#sidebar.collapsed #ctrl-tabs,
+#sidebar.collapsed #ctrl-panels-area,
+#sidebar.collapsed #sidebar-header span {
+  display: none !important;
+}
+
+/* Sidebar header — sticky at top while scrolling */
+#sidebar-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  background: #0a0a14;
+  border-bottom: 1px solid #1e1e2e;
+  font-size: 10px;
+  font-weight: 700;
+  color: #666;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-sizing: border-box;
+}
+
+#sidebar-toggle {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+#sidebar-toggle:hover { color: #a78bfa; }
+
+/* Tab strip — sticky just below header */
+#ctrl-tabs {
+  position: sticky;
+  top: 30px;
+  z-index: 4;
+  display: grid !important;
+  grid-template-columns: repeat(5, 1fr) !important;
+  background: #0a0a14 !important;
+  border-bottom: 2px solid #1e1e2e !important;
+  box-sizing: border-box;
+}
+
+.ctrl-tab {
+  display: block !important;
+  padding: 7px 2px !important;
+  height: 34px !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #666 !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  border-bottom: 2px solid transparent !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  line-height: 1.3 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  box-sizing: border-box !important;
+}
+.ctrl-tab:hover { background: #141428 !important; color: #ccc !important; }
+.ctrl-tab.active {
+  background: #141428 !important;
+  color: #a78bfa !important;
+  border-bottom: 2px solid #a78bfa !important;
+}
+
+/* Panels area — just a regular block div now */
+#ctrl-panels-area {
+  padding: 10px 12px 20px;
+}
+
+
+.ctrl-panel { display: none; }
+.ctrl-panel.active { display: block; }
+
+/* Control rows */
+.ctrl-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #aaa;
+}
+.ctrl-row label {
+  font-size: 10.5px;
+  color: #777;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+.ctrl-row .slider-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+.ctrl-row input[type="range"] {
+  flex: 1;
+  min-width: 60px;
+  accent-color: #a78bfa;
+}
+.ctrl-row span {
+  font-size: 10px;
+  color: #666;
+  min-width: 34px;
+  text-align: right;
+}
+.ctrl-row input[type="checkbox"] {
+  accent-color: #a78bfa;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  /* override final.css appearance */
+  -webkit-appearance: checkbox !important;
+  appearance: checkbox !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+.ctrl-row input[type="checkbox"]::after { display: none !important; }
+.ctrl-row input[type="color"] {
+  width: 26px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #333;
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+}
+.ctrl-row .file-button {
+  display: inline-block;
+  padding: 3px 8px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a44;
+  border-radius: 4px;
+  color: #888;
+  font-size: 10px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.ctrl-row .file-button:hover { border-color: #a78bfa; color: #c4b5fd; }
+
+/* Section labels in panels */
+.ctrl-section-label {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #555;
+  margin: 12px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #1a1a2a;
+}
+
+/* Notes in effects panel */
+.ctrl-note {
+  font-size: 10px;
+  color: #666;
+  background: #141420;
+  border-left: 2px solid #444;
+  padding: 4px 6px;
+  border-radius: 2px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+/* Font picker */
+.font-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.font-option {
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: #1a1a2a;
+  color: #888;
+  font-size: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.font-option:hover { background: #22223a; border-color: #555; color: #ccc; }
+.font-option.active { background: #2a1f50; border-color: #a78bfa; color: #a78bfa; }
+
+/* Drawing canvas in sidebar */
+#canvas-container {
+  width: 100%;
+  height: 150px;
+  border: 1px solid #2a2a40;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+  margin-bottom: 8px;
+}
+#drawing-canvas { width: 100% !important; height: 100% !important; }
+
+#canvas-tools { display: flex; flex-direction: column; gap: 6px; }
+
+#icons {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 0 !important;
+}
+#icons button {
+  display: flex !important;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px !important;
+  background: #1a1a2a !important;
+  border: 1px solid #2a2a40 !important;
+  border-radius: 4px !important;
+  color: #888 !important;
+  font-size: 10px !important;
+  cursor: pointer !important;
+  min-height: auto !important;
+  min-width: auto !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+#icons button:hover { background: #22223a !important; border-color: #a78bfa !important; color: #c4b5fd !important; }
+#icons button img { width: 13px !important; height: 13px !important; filter: invert(0.6); }
+#icons button.active { background: #2a1f50 !important; border-color: #a78bfa !important; color: #a78bfa !important; }
+
+#sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+#sliders label { font-size: 10px !important; color: #666 !important; margin-bottom: 0 !important; font-weight: 400 !important; }
+
+/* Mode toggle button */
+.mode-toggle-btn {
+  width: 100%;
+  padding: 5px 10px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a44;
+  border-radius: 5px;
+  color: #888;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mode-toggle-btn:hover { border-color: #a78bfa; color: #c4b5fd; }
+
+/* Scrollbar in sidebar */
+#ctrl-panels-area::-webkit-scrollbar { width: 4px; }
+#ctrl-panels-area::-webkit-scrollbar-track { background: transparent; }
+#ctrl-panels-area::-webkit-scrollbar-thumb { background: #2a2a40; border-radius: 2px; }
+
+/* ═══════════════════════════════════════════════════════════
+   RESIZE HANDLE
+═══════════════════════════════════════════════════════════ */
+#resize-handle {
+  flex: 0 0 4px;
+  cursor: col-resize;
+  background: #1a1a2a;
+  transition: background 0.15s;
+}
+#resize-handle:hover { background: #a78bfa; }
+
+/* ═══════════════════════════════════════════════════════════
+   RIGHT: MAIN CANVAS (toolbar + paper + bottom bar)
+═══════════════════════════════════════════════════════════ */
+#main-canvas {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #111118;
+  overflow: visible;   /* allow Quill picker dropdowns to render outside bounds */
+}
+
+/* Canvas hint bar */
+#canvas-hint {
+  flex: 0 0 auto;
+  padding: 5px 14px;
+  background: #0d0d18;
+  border-bottom: 1px solid #1a1a28;
+  font-size: 10.5px;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#canvas-hint strong { color: #a78bfa; }
+
+/* ── Quill toolbar strip ──────────────────────────────────── */
+#toolbar-container {
+  flex: 0 0 auto !important;
+  background: #0f0f1a !important;
+  border: none !important;
+  border-bottom: 1px solid #1e1e2e !important;
+  padding: 4px 8px !important;
+  margin-bottom: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;   /* must be visible so picker dropdowns aren't clipped */
+  white-space: nowrap;
+  display: flex !important;
+  align-items: center !important;
+  position: relative;
+  z-index: 100;                   /* above main-canvas so pickers render on top */
+}
+
+/* Dark theme for Quill toolbar buttons */
+#toolbar-container button,
+#toolbar-container select {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  min-height: auto !important;
+  min-width: auto !important;
+  padding: 3px 5px !important;
+  color: #999 !important;
+}
+#toolbar-container button:hover { background: #1e1e30 !important; color: #fff !important; }
+.ql-snow .ql-stroke { stroke: #888 !important; }
+.ql-snow .ql-fill { fill: #888 !important; }
+.ql-snow .ql-picker-label { color: #aaa !important; }
+.ql-snow button:hover .ql-stroke { stroke: #a78bfa !important; }
+
+/* Quill picker dropdowns — dark theme */
+.ql-snow .ql-picker-options {
+  background: #1a1a2e !important;
+  border: 1px solid #2a2a44 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5) !important;
+  z-index: 9999 !important;
+  color: #ccc !important;
+  padding: 4px 0 !important;
+}
+.ql-snow .ql-picker-item {
+  color: #bbb !important;
+  padding: 4px 12px !important;
+  font-size: 11px !important;
+}
+.ql-snow .ql-picker-item:hover,
+.ql-snow .ql-picker-item.ql-selected {
+  color: #a78bfa !important;
+  background: #12122a !important;
+}
+/* Color picker swatches */
+.ql-snow .ql-color-picker .ql-picker-options {
+  padding: 6px !important;
+  width: 162px !important;
+}
+.ql-snow .ql-color-picker .ql-picker-item {
+  border-radius: 2px !important;
+  border: 1px solid transparent !important;
+  padding: 0 !important;
+  width: 16px !important;
+  height: 16px !important;
+}
+.ql-snow .ql-color-picker .ql-picker-item:hover {
+  border-color: #a78bfa !important;
+}
+
+
+
+/* Render math button */
+.ql-render-math {
+  border: 1px solid #5b3fa8 !important;
+  border-radius: 4px !important;
+  color: #a78bfa !important;
+  padding: 2px 8px !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  background: #1a1040 !important;
+}
+.ql-render-math:hover { background: #2d1a70 !important; }
+
+/* Delete image btn */
+#delete-image-btn img { width: 13px; filter: invert(0.6); }
+
+/* ── Paper container ──────────────────────────────────────── */
+#outer-container {
+  flex: 1 1 0 !important;
+  overflow: auto !important;
+  padding: 20px !important;
+  display: flex !important;
+  justify-content: flex-start !important;
+  align-items: flex-start !important;
+  min-height: 0 !important;
+  background: #111118 !important;
+  border-top: none !important;
+  height: auto !important;
+}
+
+/* Paper page — set a min-height so all children can grow */
+#final_page {
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  min-width: 300px;
+  display: flex !important;
+  flex-direction: column !important;
+  aspect-ratio: var(--page-aspect-ratio, 0.707) !important; /* 1 / 1.414 for A4 */
+  height: auto !important; /* height is forced by aspect-ratio based on width */
+}
+
+/* These must all stretch to fill final_page */
+#shadow-effect {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#heading_page {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+}
+
+/* content_page holds left-margin + output-container in a row */
+#content_page {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  min-height: 0 !important;
+  overflow-y: visible !important;
+}
+
+/* Left margin strip — stretch to fill the row height */
+#left-margin {
+  align-self: stretch !important;
+  min-height: 100% !important;
+  height: auto !important;
+}
+
+/* Output container — stretch vertically */
+#output-container {
+  flex: 1 !important;
+  align-self: stretch !important;
+  background-image: var(--background-lines) !important;
+}
+
+
+/* ── Bottom bar ───────────────────────────────────────────── */
+#bottom-bar {
+  flex: 0 0 auto;
+  background: #0f0f1a;
+  border-top: 1px solid #1e1e2e;
+}
+
+#pagination-controls {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px !important;
+  margin: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  gap: 8px;
+}
+
+.pagination-download,
+.pagination-main,
+.pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pagination-btn {
+  padding: 4px 10px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a40;
+  border-radius: 6px;
+  color: #bbb;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.pagination-btn:hover { background: #222238; border-color: #a78bfa; color: #fff; }
+.page-number { font-size: 11px; color: #888; min-width: 40px; text-align: center; }
+.download-btn { background: #1e1050; border-color: #6d3ec5; color: #c4b5fd; }
+.download-btn:hover { background: #2d1a70; }
+.pagination-btn img { width: 14px; height: 14px; filter: invert(0.7); vertical-align: middle; }
+.action-text { font-size: 10px; }
+.nav-btn { padding: 4px 8px; }
+
+/* ── Info toggle bar at very bottom ──────────────────────── */
+#info-toggle-bar {
+  display: none !important;
+}
+
+/* ── Global scrollbar ────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #0d0d12; }
+::-webkit-scrollbar-thumb { background: #2a2a40; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a78bfa; }
+
+/* ── Progress overlay ────────────────────────────────────── */
+.progress-overlay { z-index: 9999 !important; }
+
+/* ── Drawing controls (original element) – keep hidden ───── */
+#drawing-controls { display: none !important; }
+
+/* ── Quill container dark background ─────────────────────── */
+#output-container {
+  background-image: var(--background-lines) !important;
+}
+.ql-editor { outline: none; }
+.ql-toolbar.ql-snow, .ql-container.ql-snow { border: none !important; }

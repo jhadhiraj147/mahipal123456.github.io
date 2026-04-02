@@ -1,4 +1,3 @@
-
 :root {
   --font-size: 16px;
   --font-color: #000f64;
@@ -7,18 +6,18 @@
   --margin-top: 0px;
   --margin-left: 0px;
   --line-height: 1.5;
-  --box-height: 10%;
-  --box-width: 10%;
+  --box-height: 1%;
+  --box-width: 2%;
   --top-margin-font-size: 14px;
   --background-color: white;
   --line-spacing: 1.5em;
   --left-margin-display: flex;
   --top-margin-display: flex;
-  --output-left-border: 2px solid #0c1d8c66;
-  --top-margin-left-border: 2px solid #0c1d8c66;
-  --top-margin-bottom-border: 1px solid #0c1d8c66;
-  --subbox-bottom-border: 1px solid #0c1d8c66;
-  --background-lines: linear-gradient(#0c1d8c66 0.15em, transparent 0.1em);
+  --output-left-border: none;
+  --top-margin-left-border: none;
+  --top-margin-bottom-border: none;
+  --subbox-bottom-border: none;
+  --background-lines: none;
   --custom-background-image: none;
   --main-font:'AnotherFont','CustomFont';
   --math-font:'AnotherFont','CustomFont' , 'KaTeX_Main';
@@ -2244,22 +2243,46 @@ display:none;
 }
 /* page layout */
 
-#left-margin{
-            
-    /* min-height: 100%; */
-    box-sizing: border-box;
-
-    height: fit-content;
-    background-image: var(--background-lines);
-        height: auto;
-
-    width:var(--box-width);
-    min-width: var(--box-width);
-    color: rgb(0, 15, 100);
-    display: var(--left-margin-display);    /* margin-top: 9px; */
-    /* line-height: 23px; */
-    
+/* ── Left margin line extends full paper height ── */
+#left-margin {
+  box-sizing: border-box;
+  min-height: 100%;               /* stretch to fill content_page height */
+  align-self: stretch;            /* fill cross-axis in flex row */
+  background-image: var(--background-lines);
+  width: var(--box-width);
+  min-width: var(--box-width);
+  color: rgb(0, 15, 100);
+  display: var(--left-margin-display);
 }
+
+#content_page {
+  display: flex;
+  flex-direction: row;
+  min-height: 100%;               /* grow with content instead of capping */
+  overflow-y: visible;
+  background-attachment: local;
+  flex: 1;
+}
+
+#shadow-effect {
+  min-height: 100%;               /* grow with content */
+  background-size: contain;
+  background-color: var(--background-color);
+  background-image: var(--custom-background-image);
+  display: flex;
+  flex-direction: column;
+}
+
+#heading_page {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  font-family: var(--main-font);
+  overflow: auto;
+  width: 100%;
+  min-height: 100%;              /* grow with content */
+}
+
 
 #top-margin{
     
@@ -2319,37 +2342,30 @@ display:none;
     letter-spacing: var(--letter-spacing);
     font-family: var(--main-font);
 }
-#content_page{
+#content_page {
     display: flex;
     flex-direction: row;
-    height: 100%;
-    /* background-image: linear-gradient(#00000066 0.05em, transparent 0.1em); */
-    /* background-size: 100% 23px;     */
-    overflow-y: hidden;       
+    min-height: 100%;
+    overflow-y: visible;
     background-attachment: local;
-
+    flex: 1;
 }
-#shadow-effect{
-
-    height: 100%;
+#shadow-effect {
+    min-height: 100%;
     background-size: contain;
     background-color: var(--background-color);
     background-image: var(--custom-background-image);
-
-    
-    
+    display: flex;
+    flex-direction: column;
 }
 #heading_page {
     display: flex;
     flex-direction: column;
     position: relative;
     font-family: var(--main-font);
-     /* Allow the container to be resized */
-    overflow: auto; /* Add scrollbars if content overflows */
+    overflow: auto;
     width: 100%;
-    height: 100%;
-   
-
+    min-height: 100%;
 }
 #section2{
     padding: clamp(60px, 8vh, 100px) clamp(20px, 5vw, 40px);
@@ -2383,20 +2399,18 @@ display:none;
 }
 #final_page {
     position: relative;
-    /* Initial width */
-     /* Fixed height */
+    width: 794px; /* Standard A4 paper width 96dpi */
+    max-width: 100%;
+    
     padding: 10px;
     box-sizing: border-box;
-    resize:horizontal;
+    /* resize: horizontal removed because paper templates have fixed dimensional constraints */
     overflow: auto;
     scrollbar-width: none;
-    /* height: 100%; */
-    background: white;
-    /* margin-left: 5%;
-    margin-right: 5%; */
-    border: 1px solid #000000;
-    /* height: 100%; */
+    -ms-overflow-style: none; /* IE and Edge */
     
+    background: white;
+    border: 1px solid #000000;
 }
 #outer-container{
     border-top: 2px solid;
