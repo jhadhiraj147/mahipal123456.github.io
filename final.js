@@ -245,13 +245,18 @@ function applyPageToDOM(data = {}) {
     titleBox.innerHTML = data.title || "";
     sideBox.innerHTML = data.side || "";
 
+    // GUARD: block text-change from triggering pagination while loading
+    window._isLoadingPage = true;
     if (currentQuill) {
-    currentQuill.setContents([]); // clear safely
-    if (data.quillDelta) {
-        currentQuill.updateContents(data.quillDelta, Quill.sources.SILENT);
+        currentQuill.setContents([]); // clear safely
+        if (data.quillDelta) {
+            currentQuill.updateContents(data.quillDelta, Quill.sources.SILENT);
+        }
     }
-}
-
+    // Small rAF delay ensures Quill finishes rendering before we release the guard
+    requestAnimationFrame(() => {
+        window._isLoadingPage = false;
+    });
 
     shadowPage.querySelectorAll(".top-img").forEach(e => e.remove());
     (data.images || []).forEach(info => {
@@ -390,9 +395,8 @@ async function deleteCurrentPage() {
 function nextPage() {
     if (currentPageIndex + 1 < pageOrder.length) {
         showPage(currentPageIndex + 1);
-    } else {
-        createNewPageInternal();
     }
+    // Do NOT auto-create a page on navigation — only autoPaginate does that
 }
 
 function prevPage() {
@@ -572,11 +576,13 @@ function initQuill() {
     // Listen for text changes to trigger auto-pagination
     let paginationTimeout;
     currentQuill.on('text-change', (delta, oldDelta, source) => {
+        // CRITICAL: never auto-paginate when we are loading page data into the editor
+        if (window._isLoadingPage) return;
         if (source === 'user' || source === 'api') {
             clearTimeout(paginationTimeout);
             paginationTimeout = setTimeout(() => {
                 autoPaginate();
-            }, 100); // Trigger almost instantly to make pasting feel snappy
+            }, 100);
         }
     });
 }
@@ -590,7 +596,7 @@ async function autoPaginate() {
     if (isPaginating || !currentQuill) return;
     
     const editorNode = currentQuill.root;
-    // We check if the scrollHeight significantly exceeds the physically constrained clientHeight
+    // Only paginate if content genuinely overflows the physical paper boundary
     if (editorNode.scrollHeight <= editorNode.clientHeight + 10) return;
     
     isPaginating = true;
@@ -600,7 +606,7 @@ async function autoPaginate() {
         const totalLength = currentQuill.getLength();
         let overflowIndex = -1;
         
-        // Fast search: jump by 10s to find where the text visually crosses the boundary
+        // Fast search: jump by 10s to find where text visually crosses the boundary
         for (let i = 10; i < totalLength; i += 10) {
             const bounds = currentQuill.getBounds(i);
             if (bounds && bounds.bottom > maxHeight) {
@@ -609,7 +615,7 @@ async function autoPaginate() {
             }
         }
         
-        // Backtrack to find exact char
+        // Backtrack precisely character by character
         if (overflowIndex !== -1) {
             for (let i = overflowIndex - 10; i <= overflowIndex; i++) {
                 if (i < 0) continue;
@@ -620,54 +626,73 @@ async function autoPaginate() {
                 }
             }
         } else {
-            // Failsafe fallback
             overflowIndex = Math.floor(totalLength * 0.8);
         }
 
-        // Backtrack further to avoid splitting a word in half (find last space)
+        // Backtrack to avoid splitting a word mid-character (find last space)
         const textToOverflow = currentQuill.getText(Math.max(0, overflowIndex - 30), 30);
         const lastSpace = textToOverflow.lastIndexOf(' ');
         if (lastSpace !== -1 && lastSpace > 10) {
             overflowIndex = (overflowIndex - 30) + lastSpace + 1;
         }
 
-        // 1. Cut the extra content
+        // 1. Capture overflow delta BEFORE deleting it
         const overflowDelta = currentQuill.getContents(overflowIndex, totalLength - overflowIndex);
-        currentQuill.deleteText(overflowIndex, totalLength - overflowIndex, Quill.sources.SILENT);
         
-        // 2. Save current page perfectly cleanly
+        // 2. Delete overflow from this page SILENTLY (no text-change pagination re-trigger)
+        window._isLoadingPage = true;
+        currentQuill.deleteText(overflowIndex, totalLength - overflowIndex, Quill.sources.SILENT);
+        window._isLoadingPage = false;
+        
+        // 3. Save this page cleanly (just the content that fits)
         await saveCurrentPage();
         
-        // 3. Create the *new* page and put the overflow there
-        const newPageData = {
-            title: document.getElementById('top-margin').innerHTML || "",
-            side: document.getElementById('left-margin-in').innerHTML || "",
-            quillDelta: overflowDelta,
-            quillHTML: "",
-            images: [] // Images don't auto-flow yet due to complex absolute pos coords
-        };
+        // 4. Check if there's already a NEXT page to pour into
+        //    This prevents duplicate page creation on re-visits
+        const nextIndex = currentPageIndex + 1;
+        let targetPageId;
         
-        const newId = await addPageToDB(newPageData);
+        if (nextIndex < pageOrder.length) {
+            // Pour into the EXISTING next page — prepend overflow to what's already there
+            targetPageId = pageOrder[nextIndex];
+            const nextPageData = await loadPage(targetPageId);
+            
+            // Merge: overflow goes BEFORE existing content
+            const existingDelta = nextPageData.quillDelta || { ops: [{ insert: '\n' }] };
+            const mergedDelta = { ops: [...overflowDelta.ops, ...existingDelta.ops] };
+            
+            const updatedPage = { ...nextPageData, quillDelta: mergedDelta, quillHTML: '' };
+            cachePage(targetPageId, updatedPage);
+            await updatePageInDB(updatedPage);
+        } else {
+            // No next page exists — create one
+            const newPageData = {
+                title: document.getElementById('top-margin').innerHTML || '',
+                side: document.getElementById('left-margin-in').innerHTML || '',
+                quillDelta: overflowDelta,
+                quillHTML: '',
+                images: []
+            };
+            targetPageId = await addPageToDB(newPageData);
+            pageOrder.splice(currentPageIndex + 1, 0, targetPageId);
+            await saveNotebookMeta();
+            cachePage(targetPageId, { id: targetPageId, ...newPageData });
+        }
         
-        // 4. Splice it into current order immediately after this page
-        pageOrder.splice(currentPageIndex + 1, 0, newId);
-        await saveNotebookMeta();
-        cachePage(newId, { id: newId, ...newPageData });
-        
-        // 5. Jump user to the newly created page
+        // 5. Move to that next page and let recursive autoPaginate handle the rest
         await showPage(currentPageIndex + 1, { skipSave: true });
         
-        // Ensure cursor is retained at the end of the newly ported text!
+        // Cursor to end of the newly loaded overflow content
         if (currentQuill) {
             currentQuill.focus();
             currentQuill.setSelection(currentQuill.getLength(), 0, Quill.sources.SILENT);
         }
         
-        // 6. If they pasted a 50-page essay, recursively chunk again
+        // 6. Recursively paginate — handles 5-page pastes seamlessly
         setTimeout(() => autoPaginate(), 50);
         
     } catch(err) {
-        console.error("Auto-Pagination Failed:", err);
+        console.error('Auto-Pagination Failed:', err);
     } finally {
         isPaginating = false;
     }
