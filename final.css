@@ -2405,13 +2405,19 @@ display:none;
     padding: 10px;
     box-sizing: border-box;
     /* resize: horizontal removed because paper templates have fixed dimensional constraints */
-    overflow: auto;
+    overflow: hidden !important;
     scrollbar-width: none;
     -ms-overflow-style: none; /* IE and Edge */
     
     background: white;
     border: 1px solid #000000;
 }
+
+/* Force Quill inner editor to respect physical boundaries without scrolling */
+.ql-editor {
+    overflow-y: hidden !important;
+}
+
 #outer-container{
     border-top: 2px solid;
     padding-top: 20px;
