@@ -697,17 +697,21 @@ async function autoPaginate() {
         window._isLoadingPage = true;
         await showPage(currentPageIndex + 1, { skipSave: true });
         
-        setTimeout(() => {
-            window._isLoadingPage = false;
-        }, 150);
-        
         if (currentQuill) {
             currentQuill.focus();
             currentQuill.setSelection(currentQuill.getLength(), 0, Quill.sources.SILENT);
         }
         
-        // 6. Recursively paginate — handles 5-page pastes seamlessly
-        setTimeout(() => autoPaginate(), 50);
+        // 6. Recursively paginate — MUST wait until THIS page has fully stabilized
+        setTimeout(() => {
+            window._isLoadingPage = false;
+            
+            // Check if THIS page's newly loaded content also overflows
+            if (currentQuill.root.scrollHeight > PAPER_CONTENT_HEIGHT + 10) {
+                // Let the main thread breathe, then continue slicing
+                setTimeout(autoPaginate, 10);
+            }
+        }, 200);
         
     } catch(err) {
         console.error('Auto-Pagination Failed:', err);
