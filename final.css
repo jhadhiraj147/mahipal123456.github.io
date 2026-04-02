@@ -2399,21 +2399,20 @@ display:none;
 }
 #final_page {
     position: relative;
-    width: 794px;           /* A4 width @ 96dpi */
-    height: 1123px;         /* A4 height @ 96dpi — FIXED so autoPaginate has a real boundary */
+    width: 794px;    /* A4 width @ 96dpi */
+    height: 1123px;  /* A4 height @ 96dpi — fixed boundary for autoPaginate */
     flex-shrink: 0;
-    
+
     padding: 10px;
     box-sizing: border-box;
-    overflow: hidden !important;  /* Paper is a hard boundary — no scroll, text flows to next page */
+    overflow: hidden !important;  /* Hard paper boundary — no scroll inside paper */
     scrollbar-width: none;
     -ms-overflow-style: none;
-    
+
     background: white;
     border: 1px solid #000000;
-    
-    /* Zoom is applied via transform:scale() in JS — set origin to top-center */
-    transform-origin: top center;
+    /* CSS zoom applied by JS — unlike transform:scale, this DOES affect layout
+       so the outer-container scroll bars appear correctly when zoomed in */
 }
 
 /* Force Quill inner editor to respect physical boundaries without scrolling */

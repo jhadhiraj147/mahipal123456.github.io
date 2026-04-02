@@ -618,23 +618,19 @@
 
       </div>
       
-      <!-- FOUC Preventer: Instantly scale the paper on DOM parse, no layout jump -->
+      <!-- FOUC Preventer: apply CSS zoom to paper immediately so no layout jump on load -->
       <script>
       (function(){
         try {
           var container = document.getElementById('outer-container');
           var page = document.getElementById('final_page');
           if(container && page) {
-            var avail = container.clientHeight - 60;
-            var A4 = 1123;
-            if(avail > 0 && avail < A4) {
-              var z = Math.max(0.3, Math.min(1.0, avail / A4));
-              page.style.transform = 'scale(' + z + ')';
-              page.style.transformOrigin = 'top center';
-              // Adjust margin so container knows real painted size
-              var scaledH = Math.round(A4 * z);
-              page.style.marginBottom = (scaledH - A4) + 'px';
-            }
+            var availW = container.clientWidth  - 48;
+            var availH = container.clientHeight - 60;
+            var A4_W = 794, A4_H = 1123;
+            var ratio = Math.min(availW / A4_W, availH / A4_H);
+            ratio = Math.max(0.25, Math.min(1.5, ratio));
+            page.style.zoom = ratio;
           }
         } catch(e){}
       })();

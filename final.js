@@ -596,20 +596,32 @@ async function autoPaginate() {
     if (isPaginating || !currentQuill) return;
     
     const editorNode = currentQuill.root;
+    
+    // CSS zoom on #final_page affects clientHeight — use fixed A4 content height instead
+    // A4 = 1123px paper, minus 20px padding top+bottom = 1103px usable content height
+    const PAPER_CONTENT_HEIGHT = 1103;
+    
+    // getBounds() returns coordinates in the zoomed space, so divide by zoom to get real px
+    const zoom = window._currentPaperZoom || 1.0;
+    
+    // scrollHeight is unaffected by zoom in most browsers — compare unzoomed values
+    const realScrollH = editorNode.scrollHeight;
+    
     // Only paginate if content genuinely overflows the physical paper boundary
-    if (editorNode.scrollHeight <= editorNode.clientHeight + 10) return;
+    if (realScrollH <= PAPER_CONTENT_HEIGHT + 10) return;
     
     isPaginating = true;
     
     try {
-        const maxHeight = editorNode.clientHeight;
+        const maxHeight = PAPER_CONTENT_HEIGHT;
         const totalLength = currentQuill.getLength();
         let overflowIndex = -1;
         
         // Fast search: jump by 10s to find where text visually crosses the boundary
         for (let i = 10; i < totalLength; i += 10) {
             const bounds = currentQuill.getBounds(i);
-            if (bounds && bounds.bottom > maxHeight) {
+            // getBounds returns zoomed coords — divide to get real content coords
+            if (bounds && (bounds.bottom / zoom) > maxHeight) {
                 overflowIndex = i;
                 break;
             }
@@ -620,7 +632,7 @@ async function autoPaginate() {
             for (let i = overflowIndex - 10; i <= overflowIndex; i++) {
                 if (i < 0) continue;
                 const bounds = currentQuill.getBounds(i);
-                if (bounds && bounds.bottom > maxHeight) {
+                if (bounds && (bounds.bottom / zoom) > maxHeight) {
                     overflowIndex = i;
                     break;
                 }
@@ -1005,55 +1017,55 @@ function setCSSVariable(variable, value) {
             setTimeout(autoPaginate, 800);
         });
 
-        // Workspace Zoom functionality — scales the physical paper, not the viewport
+        // Workspace Zoom — applies CSS zoom to the paper itself
+        // CSS zoom (unlike transform:scale) DOES affect layout, so scroll works correctly
         const wsZoomSlider = document.getElementById('workspace-zoom');
         const wsZoomVal = document.getElementById('workspace-zoom-val');
+        // Store current zoom for pagination to reference
+        window._currentPaperZoom = 1.0;
 
         function applyWorkspaceZoom(ratio) {
             const paper = document.getElementById('final_page');
             if (!paper) return;
-            // Scale the paper element itself — origin is top-center
-            // The outer-container scroll viewport remains unchanged so you can scroll when zoomed in
-            paper.style.transform = `scale(${ratio})`;
-            // When scaled, the paper visually occupies ratio * 1123px height
-            // We need to set a margin-bottom placeholder so the container knows the visual size
-            const scaledHeight = Math.round(1123 * ratio);
-            const scaledWidth  = Math.round(794 * ratio);
-            paper.style.marginBottom = `${scaledHeight - 1123}px`;
-            paper.style.marginRight  = `${Math.max(0, scaledWidth - 794)}px`;
+            window._currentPaperZoom = ratio;
+            // CSS zoom changes the element's layout dimensions proportionally
+            // At zoom:0.7, a 794x1123 paper becomes 556x786 in the layout
+            paper.style.zoom = ratio;
+            if (wsZoomVal) wsZoomVal.textContent = Math.round(ratio * 100) + '%';
         }
 
         if (wsZoomSlider && wsZoomVal) {
             wsZoomSlider.addEventListener('input', (e) => {
-                const ratio = parseFloat(e.target.value);
-                wsZoomVal.textContent = Math.round(ratio * 100) + '%';
-                applyWorkspaceZoom(ratio);
+                applyWorkspaceZoom(parseFloat(e.target.value));
             });
         }
-        
-        // Auto fit to screen: pick a scale so the full A4 paper height fits in the viewport
+
+        // Auto-fit: shrink paper so the ENTIRE page (both W and H) fits in the viewport
+        // This means no scrolling needed on fresh load — just like opening a PDF viewer
         function autoFitToScreen() {
-            if (!wsZoomSlider) return;
-            
+            if (!wsZoomSlider || !wsZoomVal) return;
+
             const container = document.getElementById('outer-container');
             if (!container) return;
-            
-            const A4_HEIGHT = 1123; // px at 96dpi
-            const available = container.clientHeight - 60; // subtract padding
-            
-            if (available > 0 && available < A4_HEIGHT) {
-                let ratio = available / A4_HEIGHT;
-                ratio = Math.max(0.3, Math.min(1.0, ratio));
-                wsZoomSlider.value = ratio;
-                wsZoomVal.textContent = Math.round(ratio * 100) + '%';
-                applyWorkspaceZoom(ratio);
-            } else {
-                applyWorkspaceZoom(parseFloat(wsZoomSlider.value));
-            }
+
+            const A4_W = 794;
+            const A4_H = 1123;
+            // Available space in the scrollable viewport (subtract padding)
+            const availW = container.clientWidth  - 48; // 24px padding each side
+            const availH = container.clientHeight - 60; // toolbar gap
+
+            // Fit BOTH dimensions: use the more constrained axis
+            const ratioW = availW / A4_W;
+            const ratioH = availH / A4_H;
+            let ratio = Math.min(ratioW, ratioH);
+            ratio = Math.max(0.25, Math.min(1.5, ratio)); // clamp sensibly
+
+            wsZoomSlider.value = ratio;
+            applyWorkspaceZoom(ratio);
         }
-        
-        // Run once after initial render
-        setTimeout(autoFitToScreen, 100);
+
+        // Run once the DOM has settled
+        setTimeout(autoFitToScreen, 150);
 
         // Toggle background image
         let isBackgroundOn = false;  // matches CSS default (--background-lines: none)
