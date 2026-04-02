@@ -2418,7 +2418,8 @@ display:none;
 /* Force Quill inner editor to respect physical boundaries without scrolling */
 .ql-editor {
     overflow-y: hidden !important;
-    max-height: 100% !important; /* Constrained by parent #final_page fixed height */
+    min-height: 100% !important;
+    height: auto !important;
 }
 
 #outer-container {
