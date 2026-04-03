@@ -617,9 +617,17 @@ async function autoPaginate() {
         const oldHeight = paper.style.height || '';
         const oldOverflow = paper.style.overflow || '';
         
-        // UNCLAMP: Force paper to expand visually so getBounds isn't capped
+        // UNCLAMP: Force all parent DOM layers to expand visually so getBounds isn't capped
+        const outputContainer = document.getElementById('output-container');
+        const contentPage = document.getElementById('content_page');
+        
+        const oldOutOverflow = outputContainer ? outputContainer.style.overflow : '';
+        const oldConOverflow = contentPage ? contentPage.style.overflow : '';
+        
         paper.style.setProperty('height', 'auto', 'important');
         paper.style.setProperty('overflow', 'visible', 'important');
+        if (outputContainer) outputContainer.style.setProperty('overflow', 'visible', 'important');
+        if (contentPage) contentPage.style.setProperty('overflow', 'visible', 'important');
 
         // CRITICAL FIX: The browser auto-scrolls hidden containers on paste/focus. 
         // We MUST reset internal scroll to 0, otherwise getBounds() returns shifted coordinates
@@ -661,6 +669,15 @@ async function autoPaginate() {
         
         if (oldOverflow) paper.style.setProperty('overflow', oldOverflow);
         else paper.style.removeProperty('overflow');
+        
+        if (outputContainer) {
+            if (oldOutOverflow) outputContainer.style.setProperty('overflow', oldOutOverflow);
+            else outputContainer.style.removeProperty('overflow');
+        }
+        if (contentPage) {
+            if (oldConOverflow) contentPage.style.setProperty('overflow', oldConOverflow);
+            else contentPage.style.removeProperty('overflow');
+        }
         
         // Backtrack to avoid splitting a word mid-character (find last space)
         const textToOverflow = currentQuill.getText(Math.max(0, overflowIndex - 30), 30);
