@@ -603,19 +603,21 @@ function getSterileQuill() {
         sterileQuill = new Quill(sterileContainer, { theme: 'snow', modules: { toolbar: false } });
     }
     
-    // Explicitly mirror the active styling of the live editor to ensure wrapping matches perfectly
+    // Explicitly mirror every typographic footprint of the live editor 
+    // to ensure wrap geometries map perfectly natively natively.
     const realEditor = document.querySelector('#output-inner-container');
     if (!realEditor) return sterileQuill;
     
     const realStyles = window.getComputedStyle(realEditor);
     const cloneEditor = sterileQuill.root;
     
-    cloneEditor.style.cssText = `
+    const cssProps = [
+        'font-family', 'font-size', 'font-weight', 'font-style', 'font-variant',
+        'line-height', 'letter-spacing', 'word-spacing', 'text-align'
+    ];
+    
+    let clonedCSS = `
         width: ${realEditor.clientWidth}px !important;
-        font-family: "${realStyles.fontFamily.replace(/"/g, '')}" !important;
-        font-size: ${realStyles.fontSize} !important;
-        line-height: ${realStyles.lineHeight} !important;
-        letter-spacing: ${realStyles.letterSpacing} !important;
         padding: 0px !important;
         white-space: pre-line !important;
         overflow-wrap: anywhere !important;
@@ -624,6 +626,11 @@ function getSterileQuill() {
         min-height: 0 !important;
     `;
     
+    for (const prop of cssProps) {
+        clonedCSS += `${prop}: ${realStyles.getPropertyValue(prop)} !important; `;
+    }
+    
+    cloneEditor.style.cssText = clonedCSS;
     return sterileQuill;
 }
 
