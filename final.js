@@ -592,15 +592,46 @@ function initQuill() {
 // ========================================================
 let isPaginating = false;
 
+let sterileQuill = null;
+let sterileContainer = null;
+
+function getSterileQuill() {
+    if (!sterileQuill) {
+        sterileContainer = document.createElement('div');
+        sterileContainer.style.cssText = "position: absolute; top: -9999px; left: -9999px; visibility: hidden; pointer-events: none;";
+        document.body.appendChild(sterileContainer);
+        sterileQuill = new Quill(sterileContainer, { theme: 'snow', modules: { toolbar: false } });
+    }
+    
+    // Explicitly mirror the active styling of the live editor to ensure wrapping matches perfectly
+    const realEditor = document.querySelector('#output-inner-container');
+    if (!realEditor) return sterileQuill;
+    
+    const realStyles = window.getComputedStyle(realEditor);
+    const cloneEditor = sterileQuill.root;
+    
+    cloneEditor.style.cssText = `
+        width: ${realEditor.clientWidth}px !important;
+        font-family: "${realStyles.fontFamily.replace(/"/g, '')}" !important;
+        font-size: ${realStyles.fontSize} !important;
+        line-height: ${realStyles.lineHeight} !important;
+        letter-spacing: ${realStyles.letterSpacing} !important;
+        padding: 0px !important;
+        white-space: pre-line !important;
+        overflow-wrap: anywhere !important;
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 0 !important;
+    `;
+    
+    return sterileQuill;
+}
+
 async function autoPaginate() {
     if (isPaginating || !currentQuill) return;
     
     const editorNode = currentQuill.root;
     
-    // CRITICAL DISCOVERY: The usable paper height is NOT statically 1103px!
-    // The user has a dynamic Top Margin header which takes up space on the 1123px page.
-    // If we pack text to 1103px, the bottom 2-3 lines overflow the visible box and get clipped.
-    // We MUST read the true constrained height securely mapped by the browser BEFORE unclamping!
     const outputContainer = document.getElementById('output-container');
     if (!outputContainer) return;
     
@@ -622,7 +653,7 @@ async function autoPaginate() {
         finalPageElem.style.opacity = '0';
         finalPageElem.style.pointerEvents = 'none';
         
-        // UNCLAMP: allow the DOM editor to stretch natively mathematically without CSS constraints
+        // UNCLAMP live UI so it paints out the string safely if any updates leak
         editorNode.style.setProperty('height', 'auto', 'important');
         editorNode.style.setProperty('overflow', 'visible', 'important');
         editorNode.style.setProperty('min-height', 'auto', 'important');
@@ -637,10 +668,34 @@ async function autoPaginate() {
         const DeltaClass = Quill.import('delta');
         
         while (true) {
-            // STEP 1: Load the formatting into the Native DOM canvas to measure
-            currentQuill.setContents(workingDelta, Quill.sources.SILENT);
+            // STEP 1: Load the formatting into the pristine Sterile Virtual DOM to measure
+            const sq = getSterileQuill();
+            sq.setContents(workingDelta, Quill.sources.SILENT);
             
-            if (editorNode.scrollHeight <= PAPER_CONTENT_HEIGHT) {
+            const totalLength = sq.getLength();
+            let overflowIndex = -1;
+            
+            // Traverse character coordinates precisely in a completely unclipped environment
+            for (let i = 10; i < totalLength; i += 10) {
+                const bounds = sq.getBounds(i);
+                if (bounds && bounds.bottom > PAPER_CONTENT_HEIGHT) {
+                    overflowIndex = i;
+                    break;
+                }
+            }
+            
+            if (overflowIndex !== -1) {
+                // Backtrack linearly to find exactly the first overflow char
+                for (let i = overflowIndex; i >= Math.max(0, overflowIndex - 10); i--) {
+                    const bounds = sq.getBounds(i);
+                    if (bounds && bounds.bottom <= PAPER_CONTENT_HEIGHT) {
+                        overflowIndex = i + 1;
+                        break;
+                    }
+                }
+            }
+            
+            if (overflowIndex === -1) {
                 // Formatting perfectly fits on this page! We are done ripping.
                 const pageData = await loadPage(pId);
                 pageData.quillDelta = workingDelta;
@@ -649,34 +704,8 @@ async function autoPaginate() {
                 break;
             }
             
-            // STEP 2: It overflows. Perform strict Binary Search directly on the editor canvas
-            const totalLength = currentQuill.getLength();
-            let low = 0;
-            let high = totalLength;
-            let bestFit = 0;
-            
-            while (low <= high) {
-                let mid = Math.floor((low + high) / 2);
-                let testDelta = workingDelta.slice(0, mid);
-                currentQuill.setContents(testDelta, Quill.sources.SILENT);
-                
-                if (editorNode.scrollHeight <= PAPER_CONTENT_HEIGHT) {
-                    bestFit = mid;
-                    low = mid + 1; // It fits mathematically! Try packing more in.
-                } else {
-                    high = mid - 1; // Overshot! Shrink word-count.
-                }
-            }
-            
-            // Re-load the full string so we can backtrack beautifully
-            currentQuill.setContents(workingDelta, Quill.sources.SILENT);
-            let overflowIndex = bestFit;
-            
-            // Safety generic slice if anomalies block math evaluation
-            if (overflowIndex <= 5) overflowIndex = Math.floor(totalLength * 0.8);
-            
             // Backtrack to nearest space so words aren't brutally halved
-            const textToOverflow = currentQuill.getText(Math.max(0, overflowIndex - 30), 30);
+            const textToOverflow = sq.getText(Math.max(0, overflowIndex - 30), 30);
             const lastSpace = textToOverflow.lastIndexOf(' ');
             if (lastSpace !== -1 && lastSpace > 10) {
                 overflowIndex = (overflowIndex - 30) + lastSpace + 1;
@@ -734,6 +763,7 @@ async function autoPaginate() {
         }
         
         isPaginating = false;
+        window._isLoadingPage = false;
         
         // This fully restores the original visual layout to whoever triggered typing!
         await showPage(originalPageId, { skipSave: true });
@@ -741,8 +771,6 @@ async function autoPaginate() {
         if (scrollContainer) {
             scrollContainer.scrollTop = originalScrollTop;
         }
-        
-        window._isLoadingPage = false;
     }
 }
 
