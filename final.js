@@ -596,137 +596,145 @@ async function autoPaginate() {
     if (isPaginating || !currentQuill) return;
     
     const editorNode = currentQuill.root;
-    
-    // CSS zoom on #final_page affects clientHeight — use fixed A4 content height instead
-    // A4 = 1123px paper, minus 20px padding top+bottom = 1103px usable content height
     const PAPER_CONTENT_HEIGHT = 1103;
     
-    // getBounds() returns coordinates in the zoomed space, so divide by zoom to get real px
-    const zoom = window._currentPaperZoom || 1.0;
-    
-    // scrollHeight is unaffected by zoom in most browsers — compare unzoomed values
-    const realScrollH = editorNode.scrollHeight;
-    
-    // Only paginate if content genuinely overflows the physical paper boundary
-    if (realScrollH <= PAPER_CONTENT_HEIGHT + 10) return;
+    // Quick escape if the active page isn't overflowing visually
+    if (editorNode.scrollHeight <= PAPER_CONTENT_HEIGHT + 10) return;
     
     isPaginating = true;
+    window._isLoadingPage = true; // Lock UI events so manual clicks don't race
     
+    const originalPageId = currentPageId;
+    const scrollContainer = document.getElementById('outer-container');
+    const originalScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+    
+    // Obscure the paper so the user doesn't see the seizure-inducing mathematical ripple
+    const finalPageElem = document.getElementById('final_page');
+    if (finalPageElem) {
+        finalPageElem.style.opacity = '0';
+        finalPageElem.style.pointerEvents = 'none';
+        
+        // UNCLAMP: allow the DOM editor to stretch natively mathematically without CSS constraints
+        editorNode.style.setProperty('height', 'auto', 'important');
+        editorNode.style.setProperty('overflow', 'visible', 'important');
+        editorNode.style.setProperty('min-height', 'auto', 'important');
+    }
+
     try {
-        const totalLength = currentQuill.getLength();
-        let overflowIndex = -1;
-
-        // Binary Search DOM Slicer
-        // Rather than relying on unreliable physical coordinate rendering mapping,
-        // we isolate the exact string boundary by querying pure volumetric element height.
-        const fullDelta = currentQuill.getContents();
-        let low = 0;
-        let high = totalLength;
-        let bestFit = 0;
-
-        while (low <= high) {
-            let mid = Math.floor((low + high) / 2);
-            // Slice the text formatting at `mid` and inject it
-            let testDelta = fullDelta.slice(0, mid);
-            currentQuill.setContents(testDelta, Quill.sources.SILENT);
+        let currentIndex = pageOrder.indexOf(currentPageId);
+        if (currentIndex === -1) { isPaginating = false; return; }
+        
+        let pId = pageOrder[currentIndex];
+        let workingDelta = currentQuill.getContents();
+        const DeltaClass = Quill.import('delta');
+        
+        while (true) {
+            // STEP 1: Load the formatting into the Native DOM canvas to measure
+            currentQuill.setContents(workingDelta, Quill.sources.SILENT);
             
-            // Mathematically ask the browser: "Did this much text break the page?"
-            if (currentQuill.root.scrollHeight <= PAPER_CONTENT_HEIGHT) {
-                bestFit = mid;
-                low = mid + 1; // It fit! Try cramming more in
+            if (editorNode.scrollHeight <= PAPER_CONTENT_HEIGHT) {
+                // Formatting perfectly fits on this page! We are done ripping.
+                const pageData = await loadPage(pId);
+                pageData.quillDelta = workingDelta;
+                cachePage(pId, pageData);
+                await updatePageInDB(pageData);
+                break;
+            }
+            
+            // STEP 2: It overflows. Perform strict Binary Search directly on the editor canvas
+            const totalLength = currentQuill.getLength();
+            let low = 0;
+            let high = totalLength;
+            let bestFit = 0;
+            
+            while (low <= high) {
+                let mid = Math.floor((low + high) / 2);
+                let testDelta = workingDelta.slice(0, mid);
+                currentQuill.setContents(testDelta, Quill.sources.SILENT);
+                
+                if (editorNode.scrollHeight <= PAPER_CONTENT_HEIGHT) {
+                    bestFit = mid;
+                    low = mid + 1; // It fits mathematically! Try packing more in.
+                } else {
+                    high = mid - 1; // Overshot! Shrink word-count.
+                }
+            }
+            
+            // Re-load the full string so we can backtrack beautifully
+            currentQuill.setContents(workingDelta, Quill.sources.SILENT);
+            let overflowIndex = bestFit;
+            
+            // Safety generic slice if anomalies block math evaluation
+            if (overflowIndex <= 5) overflowIndex = Math.floor(totalLength * 0.8);
+            
+            // Backtrack to nearest space so words aren't brutally halved
+            const textToOverflow = currentQuill.getText(Math.max(0, overflowIndex - 30), 30);
+            const lastSpace = textToOverflow.lastIndexOf(' ');
+            if (lastSpace !== -1 && lastSpace > 10) {
+                overflowIndex = (overflowIndex - 30) + lastSpace + 1;
+            }
+            
+            // STEP 3: Mathematically sever the strings into discrete visual pages
+            const slicedPageDelta = workingDelta.slice(0, overflowIndex);
+            const overflowDelta = workingDelta.slice(overflowIndex);
+            
+            // STEP 4: Burn the perfectly sized slice into DB for THIS respective virtual page
+            const pageData = await loadPage(pId);
+            pageData.quillDelta = slicedPageDelta;
+            cachePage(pId, pageData);
+            await updatePageInDB(pageData);
+            
+            // If there's barely a character left (e.g. newline), break the ripple.
+            if (!overflowDelta || overflowDelta.length() <= 1) {
+                break; 
+            }
+            
+            // STEP 5: Ripple unconstrained overflow payload onto the NEXT Page
+            currentIndex++;
+            if (currentIndex < pageOrder.length) {
+                // Database Page Exists! Prepend overflow payload to whatever was already on that page!
+                pId = pageOrder[currentIndex];
+                const nextPageData = await loadPage(pId);
+                const existingNextDelta = nextPageData.quillDelta || new DeltaClass([{ insert: '\n' }]);
+                workingDelta = new DeltaClass(overflowDelta.ops).concat(new DeltaClass(existingNextDelta.ops));
             } else {
-                high = mid - 1; // It breached! Scale it back
+                // Database end reached! Forge an entirely new blank page mathematically.
+                const newPageData = {
+                    title: document.getElementById('top-margin').innerHTML || '',
+                    side: document.getElementById('left-margin-in').innerHTML || '',
+                    quillDelta: overflowDelta,
+                    quillHTML: '',
+                    images: []
+                };
+                pId = await addPageToDB(newPageData);
+                pageOrder.push(pId); // Append perfectly mathematically to notebook sequence
+                await saveNotebookMeta();
+                cachePage(pId, { id: pId, ...newPageData });
+                workingDelta = overflowDelta;
             }
         }
-        
-        // Return editor to original un-sliced state
-        currentQuill.setContents(fullDelta, Quill.sources.SILENT);
-        
-        // Lock in the mathematically perfect character boundary
-        overflowIndex = bestFit;
-
-        // Safety fallback if the search failed on anomalous microscopic drops
-        if (overflowIndex <= 5) {
-            console.warn("Auto-pagination binary search fell back dynamically");
-            overflowIndex = Math.floor(totalLength * 0.8);
-        }
-        
-        // Backtrack to avoid splitting a word mid-character (find last space)
-        const textToOverflow = currentQuill.getText(Math.max(0, overflowIndex - 30), 30);
-        const lastSpace = textToOverflow.lastIndexOf(' ');
-        if (lastSpace !== -1 && lastSpace > 10) {
-            overflowIndex = (overflowIndex - 30) + lastSpace + 1;
-        }
-
-        // 1. Capture overflow delta BEFORE deleting it
-        const overflowDelta = currentQuill.getContents(overflowIndex, totalLength - overflowIndex);
-        
-        // 2. Delete overflow from this page SILENTLY (no text-change pagination re-trigger)
-        window._isLoadingPage = true;
-        currentQuill.deleteText(overflowIndex, totalLength - overflowIndex, Quill.sources.SILENT);
-        window._isLoadingPage = false;
-        
-        // 3. Save this page cleanly (just the content that fits)
-        await saveCurrentPage();
-        
-        // 4. Check if there's already a NEXT page to pour into
-        //    This prevents duplicate page creation on re-visits
-        const nextIndex = currentPageIndex + 1;
-        let targetPageId;
-        
-        if (nextIndex < pageOrder.length) {
-            targetPageId = pageOrder[nextIndex];
-            const nextPageData = await loadPage(targetPageId);
-            
-            // ROBUND MERGE: Prepend overflow to existing using official Delta.concat
-            const existingDelta = nextPageData.quillDelta || { ops: [{ insert: '\n' }] };
-            const Delta = currentQuill.getContents().constructor;
-            const d1 = new Delta(overflowDelta.ops);
-            const d2 = new Delta(existingDelta.ops);
-            const mergedDelta = d1.concat(d2);
-            
-            const updatedPage = { ...nextPageData, quillDelta: mergedDelta, quillHTML: '' };
-            cachePage(targetPageId, updatedPage);
-            await updatePageInDB(updatedPage);
-        } else {
-            // No next page exists — create one
-            const newPageData = {
-                title: document.getElementById('top-margin').innerHTML || '',
-                side: document.getElementById('left-margin-in').innerHTML || '',
-                quillDelta: overflowDelta,
-                quillHTML: '',
-                images: []
-            };
-            targetPageId = await addPageToDB(newPageData);
-            pageOrder.splice(currentPageIndex + 1, 0, targetPageId);
-            await saveNotebookMeta();
-            cachePage(targetPageId, { id: targetPageId, ...newPageData });
-        }
-        
-        // 5. Move to that next page
-        window._isLoadingPage = true;
-        await showPage(currentPageIndex + 1, { skipSave: true });
-        
-        if (currentQuill) {
-            currentQuill.focus();
-            currentQuill.setSelection(currentQuill.getLength(), 0, Quill.sources.SILENT);
-        }
-        
-        // 6. Recursively paginate — MUST wait until THIS page has fully stabilized
-        setTimeout(() => {
-            window._isLoadingPage = false;
-            
-            // Check if THIS page's newly loaded content also overflows
-            if (currentQuill.root.scrollHeight > PAPER_CONTENT_HEIGHT + 10) {
-                // Let the main thread breathe, then continue slicing
-                setTimeout(autoPaginate, 10);
-            }
-        }, 200);
-        
     } catch(err) {
-        console.error('Auto-Pagination Failed:', err);
+        console.error('Auto-Pagination Virtual Ripple Failed:', err);
     } finally {
+        // STEP 6: CLEANUP! Unfreeze the editor smoothly natively to initial user UI State!
+        if (finalPageElem) {
+            editorNode.style.removeProperty('height');
+            editorNode.style.removeProperty('overflow');
+            editorNode.style.removeProperty('min-height');
+            finalPageElem.style.opacity = '1';
+            finalPageElem.style.pointerEvents = 'auto';
+        }
+        
         isPaginating = false;
+        
+        // This fully restores the original visual layout to whoever triggered typing!
+        await showPage(originalPageId, { skipSave: true });
+        
+        if (scrollContainer) {
+            scrollContainer.scrollTop = originalScrollTop;
+        }
+        
+        window._isLoadingPage = false;
     }
 }
 
