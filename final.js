@@ -596,10 +596,18 @@ async function autoPaginate() {
     if (isPaginating || !currentQuill) return;
     
     const editorNode = currentQuill.root;
-    const PAPER_CONTENT_HEIGHT = 1103;
+    
+    // CRITICAL DISCOVERY: The usable paper height is NOT statically 1103px!
+    // The user has a dynamic Top Margin header which takes up space on the 1123px page.
+    // If we pack text to 1103px, the bottom 2-3 lines overflow the visible box and get clipped.
+    // We MUST read the true constrained height securely mapped by the browser BEFORE unclamping!
+    const outputContainer = document.getElementById('output-container');
+    if (!outputContainer) return;
+    
+    const PAPER_CONTENT_HEIGHT = outputContainer.clientHeight;
     
     // Quick escape if the active page isn't overflowing visually
-    if (editorNode.scrollHeight <= PAPER_CONTENT_HEIGHT + 10) return;
+    if (editorNode.scrollHeight <= PAPER_CONTENT_HEIGHT) return;
     
     isPaginating = true;
     window._isLoadingPage = true; // Lock UI events so manual clicks don't race
