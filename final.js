@@ -617,9 +617,14 @@ async function autoPaginate() {
         const oldHeight = paper.style.height || '';
         const oldOverflow = paper.style.overflow || '';
         
-        // UNCLAMP: Force paper to expand visually so getBounds isn't capped by browser rendering engine
+        // UNCLAMP: Force paper to expand visually so getBounds isn't capped
         paper.style.setProperty('height', 'auto', 'important');
         paper.style.setProperty('overflow', 'visible', 'important');
+
+        // CRITICAL FIX: The browser auto-scrolls hidden containers on paste/focus. 
+        // We MUST reset internal scroll to 0, otherwise getBounds() returns shifted coordinates
+        // and mistakenly believes the text fits perfectly when it's actually overflowing.
+        currentQuill.root.scrollTop = 0;
 
         const maxHeight = PAPER_CONTENT_HEIGHT;
         const totalLength = currentQuill.getLength();
@@ -629,7 +634,7 @@ async function autoPaginate() {
         for (let i = 10; i < totalLength; i += 10) {
             const bounds = currentQuill.getBounds(i);
             // getBounds returns zoomed coords — divide to get real content coords
-            if (bounds && (bounds.bottom / zoom) > maxHeight) {
+            if (bounds && ((bounds.bottom / zoom) > maxHeight)) {
                 overflowIndex = i;
                 break;
             }
@@ -640,12 +645,13 @@ async function autoPaginate() {
             for (let i = overflowIndex - 10; i <= overflowIndex; i++) {
                 if (i < 0) continue;
                 const bounds = currentQuill.getBounds(i);
-                if (bounds && (bounds.bottom / zoom) > maxHeight) {
+                if (bounds && ((bounds.bottom / zoom) > maxHeight)) {
                     overflowIndex = i;
                     break;
                 }
             }
         } else {
+            console.warn("Auto-pagination couldn't find exact boundary. Defaulting to 80% slice.");
             overflowIndex = Math.floor(totalLength * 0.8);
         }
 
