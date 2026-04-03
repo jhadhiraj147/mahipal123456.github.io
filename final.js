@@ -613,70 +613,42 @@ async function autoPaginate() {
     isPaginating = true;
     
     try {
-        const paper = document.getElementById('final_page');
-        const oldHeight = paper.style.height || '';
-        const oldOverflow = paper.style.overflow || '';
-        
-        // UNCLAMP: Force all parent DOM layers to expand visually so getBounds isn't capped
-        const outputContainer = document.getElementById('output-container');
-        const contentPage = document.getElementById('content_page');
-        
-        const oldOutOverflow = outputContainer ? outputContainer.style.overflow : '';
-        const oldConOverflow = contentPage ? contentPage.style.overflow : '';
-        
-        paper.style.setProperty('height', 'auto', 'important');
-        paper.style.setProperty('overflow', 'visible', 'important');
-        if (outputContainer) outputContainer.style.setProperty('overflow', 'visible', 'important');
-        if (contentPage) contentPage.style.setProperty('overflow', 'visible', 'important');
-
-        // CRITICAL FIX: The browser auto-scrolls hidden containers on paste/focus. 
-        // We MUST reset internal scroll to 0, otherwise getBounds() returns shifted coordinates
-        // and mistakenly believes the text fits perfectly when it's actually overflowing.
-        currentQuill.root.scrollTop = 0;
-
-        const maxHeight = PAPER_CONTENT_HEIGHT;
         const totalLength = currentQuill.getLength();
         let overflowIndex = -1;
-        
-        // Fast search: jump by 10s to find where text visually crosses the boundary
-        for (let i = 10; i < totalLength; i += 10) {
-            const bounds = currentQuill.getBounds(i);
-            // getBounds returns zoomed coords — divide to get real content coords
-            if (bounds && ((bounds.bottom / zoom) > maxHeight)) {
-                overflowIndex = i;
-                break;
-            }
-        }
-        
-        // Backtrack precisely character by character
-        if (overflowIndex !== -1) {
-            for (let i = overflowIndex - 10; i <= overflowIndex; i++) {
-                if (i < 0) continue;
-                const bounds = currentQuill.getBounds(i);
-                if (bounds && ((bounds.bottom / zoom) > maxHeight)) {
-                    overflowIndex = i;
-                    break;
-                }
-            }
-        } else {
-            console.warn("Auto-pagination couldn't find exact boundary. Defaulting to 80% slice.");
-            overflowIndex = Math.floor(totalLength * 0.8);
-        }
 
-        // RESTORE CLAMP
-        if (oldHeight) paper.style.setProperty('height', oldHeight);
-        else paper.style.removeProperty('height');
-        
-        if (oldOverflow) paper.style.setProperty('overflow', oldOverflow);
-        else paper.style.removeProperty('overflow');
-        
-        if (outputContainer) {
-            if (oldOutOverflow) outputContainer.style.setProperty('overflow', oldOutOverflow);
-            else outputContainer.style.removeProperty('overflow');
+        // Binary Search DOM Slicer
+        // Rather than relying on unreliable physical coordinate rendering mapping,
+        // we isolate the exact string boundary by querying pure volumetric element height.
+        const fullDelta = currentQuill.getContents();
+        let low = 0;
+        let high = totalLength;
+        let bestFit = 0;
+
+        while (low <= high) {
+            let mid = Math.floor((low + high) / 2);
+            // Slice the text formatting at `mid` and inject it
+            let testDelta = fullDelta.slice(0, mid);
+            currentQuill.setContents(testDelta, Quill.sources.SILENT);
+            
+            // Mathematically ask the browser: "Did this much text break the page?"
+            if (currentQuill.root.scrollHeight <= PAPER_CONTENT_HEIGHT) {
+                bestFit = mid;
+                low = mid + 1; // It fit! Try cramming more in
+            } else {
+                high = mid - 1; // It breached! Scale it back
+            }
         }
-        if (contentPage) {
-            if (oldConOverflow) contentPage.style.setProperty('overflow', oldConOverflow);
-            else contentPage.style.removeProperty('overflow');
+        
+        // Return editor to original un-sliced state
+        currentQuill.setContents(fullDelta, Quill.sources.SILENT);
+        
+        // Lock in the mathematically perfect character boundary
+        overflowIndex = bestFit;
+
+        // Safety fallback if the search failed on anomalous microscopic drops
+        if (overflowIndex <= 5) {
+            console.warn("Auto-pagination binary search fell back dynamically");
+            overflowIndex = Math.floor(totalLength * 0.8);
         }
         
         // Backtrack to avoid splitting a word mid-character (find last space)
