@@ -49,7 +49,6 @@ class MyFooter extends HTMLElement {
             <a href="/#privacy-policy" class="footer-link">Privacy Policy</a>
             <a href="/#copyright-policy" class="footer-link">Copyright Policy</a>
             <a href="/#terms_conditions" class="footer-link">Terms & Conditions</a>
-            <a href="#" id="manage-cookies" class="footer-link" " onclick="manageCookies()">Manage Cookies</a>
           </div>
         </div>
 

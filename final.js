@@ -2282,6 +2282,10 @@ function initCaptureRoot() {
 
   const original = document.getElementById("shadow-effect");
   const rect = original.getBoundingClientRect();
+  
+  // Use offsetWidth to ignore UI zoom so PDF dimension isn't clipped
+  const physicalWidth = original.offsetWidth;
+  const physicalHeight = original.offsetHeight;
 
   // EXACT deep clone
   captureRoot = original.cloneNode(true);
@@ -2290,8 +2294,8 @@ function initCaptureRoot() {
   captureRoot.style.position = "fixed";
   captureRoot.style.left = "-100000px";
   captureRoot.style.top = "0";
-  captureRoot.style.width = rect.width + "px";
-  captureRoot.style.height = rect.height + "px";
+  captureRoot.style.width = physicalWidth + "px";
+  captureRoot.style.height = physicalHeight + "px";
   captureRoot.style.margin = "0";
   captureRoot.style.transform = "none";
   captureRoot.style.boxSizing = "border-box";
@@ -2337,7 +2341,7 @@ async function captureExportCanvas() {
 
   try {
       const canvas = await html2canvas(captureRoot, {
-        scale: 1.5,
+        scale: 3,
     backgroundColor: null,
     useCORS: true,
     removeContainer: false, // REQUIRED
@@ -2463,14 +2467,18 @@ async function downloadAllPagesAsPDF() {
     const canvas = await captureExportCanvas();
     const imgData = canvas.toDataURL("image/png");
 
+    const scale = 3;
+    const pdfWidth = canvas.width / scale;
+    const pdfHeight = canvas.height / scale;
+
     if (i === 0) {
-      pdf = new window.jspdf.jsPDF('p', 'pt', [canvas.width, canvas.height]);
+      pdf = new window.jspdf.jsPDF('p', 'pt', [pdfWidth, pdfHeight]);
     } else {
-      pdf.addPage([canvas.width, canvas.height], 'p');
+      pdf.addPage([pdfWidth, pdfHeight], 'p');
       pdf.setPage(i + 1);
     }
     
-    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
     canvas.width = canvas.height = 0;
 
     await new Promise(r => setTimeout(r, 0));
@@ -2523,9 +2531,13 @@ async function downloadCurrentPagePDF() {
 
   ProgressLoader.update(90, "Finalizing PDF");
 
-  const pdf = new window.jspdf.jsPDF('p', 'pt', [canvas.width, canvas.height]);
+  const scale = 3;
+  const pdfWidth = canvas.width / scale;
+  const pdfHeight = canvas.height / scale;
+
+  const pdf = new window.jspdf.jsPDF('p', 'pt', [pdfWidth, pdfHeight]);
   const imgData = canvas.toDataURL("image/png");
-  pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+  pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
   pdf.save("current_page.pdf");
 
   ProgressLoader.hide();
@@ -2754,32 +2766,7 @@ setCanvasSize()
 
 
   
-document.addEventListener("DOMContentLoaded", function () {
-    const closeBtn = document.querySelector('.modern-close-btn');
-    setTimeout(showMainPopup, 600000); // Show main popup after 30 seconds
-    setTimeout(() => {
-        closeBtn.style.display = 'flex';
-      }, 70000);
 
-});
-
-function showMainPopup() {
-    document.getElementById("supportPopup").style.display = "flex";
-}
-
-function closePopup() {
-    document.getElementById("supportPopup").style.display = "none";
-    showMiniPopup(); // Show mini popup when main popup is closed
-}
-
-function showMiniPopup() {
-    document.getElementById("miniSupportPopup").style.display = "flex";
-}
-
-function redirectToSupport() {
-    closePopup(); // Close the main popup
-    window.location.href = '#support'; // Redirect to support section
-}
 
 
 // =======================================================

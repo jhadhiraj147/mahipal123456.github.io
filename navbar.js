@@ -33,11 +33,6 @@ class MyNavbar extends HTMLElement {
                 <span class="nav-text">About</span>
               </a>
             </li>
-            <li class="nav-item">
-              <a href="/#support" class="nav-link support-btn">
-                <span class="nav-text">Support Us</span>
-              </a>
-            </li>
           </ul>
 
           <!-- Mobile Menu Toggle -->

@@ -137,39 +137,12 @@ function initializeFAQ() {
     
 
 document.addEventListener("DOMContentLoaded", function () {
-    const closeBtn = document.querySelector('.modern-close-btn');
-    setTimeout(showMainPopup, 60000); // Show main popup after 30 seconds
-    setTimeout(() => {
-        if (closeBtn) {
-            closeBtn.style.display = 'flex';
-        }
-      }, 70000);
-
     // Initialize FAQ functionality when DOM is loaded
     initializeFAQ();
     
     // Initialize tabs functionality
     initializeTabs();
-
 });
-
-function showMainPopup() {
-    document.getElementById("supportPopup").style.display = "flex";
-}
-
-function closePopup() {
-    document.getElementById("supportPopup").style.display = "none";
-    showMiniPopup(); // Show mini popup when main popup is closed
-}
-
-function showMiniPopup() {
-    document.getElementById("miniSupportPopup").style.display = "flex";
-}
-
-function redirectToSupport() {
-    closePopup(); // Close the main popup
-    window.location.href = '/#support'; // Redirect to support section
-}
 
 
 
