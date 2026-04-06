@@ -1740,8 +1740,7 @@ body {
       --word-spacing: 10px;
       --line-height:32px
     }
-    #left-margin,
-    #output-container {
+    #content_page {
       background-size: 100% var(--line-spacing);
     }
     
@@ -1853,8 +1852,7 @@ body {
     
       grid-template-columns: repeat( auto-fill, minmax(25%, 1fr) );
     }
-    #output-container,
-    #left-margin {
+    #content_page {
       background-size: 100% var(--line-spacing);
     }
     .workflow-steps-grid {
@@ -2248,7 +2246,6 @@ display:none;
   box-sizing: border-box;
   min-height: 100%;               /* stretch to fill content_page height */
   align-self: stretch;            /* fill cross-axis in flex row */
-  background-image: var(--background-lines);
   width: var(--box-width);
   min-width: var(--box-width);
   color: rgb(0, 15, 100);
@@ -2261,6 +2258,7 @@ display:none;
   min-height: 100%;               /* grow with content instead of capping */
   overflow-y: visible;
   background-attachment: local;
+  background-image: var(--background-lines);
   flex: 1;
 }
 
@@ -2318,8 +2316,7 @@ display:none;
     box-sizing: border-box;
     overflow: clip;
     position: relative;
-    display: flex;
-    background-image: var(--background-lines);    
+    display: flex;   
     flex: 1;
   min-width: 0;
     

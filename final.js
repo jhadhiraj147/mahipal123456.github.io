@@ -54,6 +54,7 @@ async function getDB() {
     if (dbPromise) return dbPromise;
         await loadIDB();
 
+        
     dbPromise = new Promise((resolve, reject) => {
         const req = indexedDB.open("NotebookDB", 1);
 
@@ -240,6 +241,15 @@ function collectPageFromDOM(id) {
     };
 }
 
+function updatePageIndicator() {
+    const num = document.getElementById("pageNumber");
+    if (!num) return;
+
+    const total = Math.max(1, pageOrder.length);
+    const current = Math.min(total, Math.max(1, currentPageIndex + 1));
+    num.innerText = `${current}/${total}`;
+}
+
 
 function applyPageToDOM(data = {}) {
     titleBox.innerHTML = data.title || "";
@@ -248,10 +258,8 @@ function applyPageToDOM(data = {}) {
     // GUARD: block text-change from triggering pagination while loading
     window._isLoadingPage = true;
     if (currentQuill) {
-        currentQuill.setContents([]); // clear safely
-        if (data.quillDelta) {
-            currentQuill.updateContents(data.quillDelta, Quill.sources.SILENT);
-        }
+        const safeDelta = data.quillDelta || { ops: [{ insert: "\n" }] };
+        currentQuill.setContents(safeDelta, Quill.sources.SILENT);
     }
     // Small rAF delay ensures Quill finishes rendering before we release the guard
     requestAnimationFrame(() => {
@@ -280,8 +288,7 @@ function applyPageToDOM(data = {}) {
         }
     });
 }
-    const num = document.getElementById("pageNumber");
-    if (num) num.innerText = `${currentPageIndex + 1}/${pageOrder.length}`;
+    updatePageIndicator();
 }
 
 // ========================================================
@@ -307,6 +314,7 @@ async function loadPage(id) {
 
 async function saveCurrentPage() {
     if (!currentQuill || !pageOrder.length) return;
+    if (currentPageIndex < 0 || currentPageIndex >= pageOrder.length) return;
     const id = pageOrder[currentPageIndex];
     const page = collectPageFromDOM(id);
     cachePage(id, page);
@@ -317,10 +325,12 @@ async function saveCurrentPage() {
 // SHOW PAGE
 // ========================================================
 async function showPage(i, { skipSave = false } = {}) {
+    if (!pageOrder.length) return;
     if (!skipSave) await saveCurrentPage();
 
-    currentPageIndex = i;
-    const id = pageOrder[i];
+    const safeIndex = Math.max(0, Math.min(i, pageOrder.length - 1));
+    currentPageIndex = safeIndex;
+    const id = pageOrder[safeIndex];
     const data = await loadPage(id);
     applyPageToDOM(data);
 }
@@ -334,7 +344,7 @@ async function createNewPageInternal() {
     const defaultContent = {
         title: "",
         side: "",
-        quillDelta: { ops: [{ insert: "content of page\n" }] },
+        quillDelta: { ops: [{ insert: "\n" }] },
         quillHTML: "",
         images: []
     };
@@ -466,11 +476,22 @@ async function renderSelectedMath(quill) {
     const range = quill.getSelection();
     if (!range || range.length === 0) return;
 
-    const latex = quill.getText(range.index, range.length).trim();
+    let latex = quill.getText(range.index, range.length).trim();
     if (!latex) return;
 
-    // ✅ FORCE INLINE ALWAYS
-    const display = false;
+    let display = false;
+
+    if (latex.startsWith('$$') && latex.endsWith('$$')) {
+        latex = latex.slice(2, -2).trim();
+        display = true;
+    } else if (latex.startsWith('\\[') && latex.endsWith('\\]')) {
+        latex = latex.slice(2, -2).trim();
+        display = true;
+    } else if (latex.startsWith('\\(') && latex.endsWith('\\)')) {
+        latex = latex.slice(2, -2).trim();
+    } else if (latex.startsWith('$') && latex.endsWith('$')) {
+        latex = latex.slice(1, -1).trim();
+    }
 
     quill.deleteText(range.index, range.length, Quill.sources.USER);
 
@@ -485,24 +506,111 @@ async function renderSelectedMath(quill) {
 }
 
 async function renderAllMath(quill) {
-    const text = quill.getText();
-    // Match $$...$$ or $...$
-    const regex = /\$\$([\s\S]+?)\$\$|\$([^\$]+?)\$/g;
+    const delta = quill.getContents();
+    let text = "";
+    if (delta && delta.ops) {
+        for (const op of delta.ops) {
+            if (typeof op.insert === 'string') {
+                text += op.insert;
+            } else {
+                // For non-string inserts (e.g. math embeds), take exactly 1 string index
+                text += '\uFFFC';
+            }
+        }
+    }
     
-    let match;
-    let offset = 0;
-    while ((match = regex.exec(text)) !== null) {
-        let start = match.index - offset;
-        let length = match[0].length;
-        
-        let isBlock = match[0].startsWith('$$');
-        let latex = (isBlock ? match[1] : match[2]).trim();
+    if (!text || !text.trim()) return;
 
-        quill.deleteText(start, length, Quill.sources.USER);
-        quill.insertEmbed(start, "math", { latex, display: false }, Quill.sources.USER);
-        
-        // Compensate index for the fact that we deleted 'length' chars and inserted 1 char
-        offset += (length - 1);
+    const ranges = [];
+
+    const delimiters = [
+        { left: '$$', right: '$$', display: true },
+        { left: '\\[', right: '\\]', display: true },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '$', right: '$', display: false }
+    ];
+
+    function isEscaped(str, index) {
+        let backslashes = 0;
+        for (let i = index - 1; i >= 0 && str[i] === '\\'; i--) backslashes++;
+        return backslashes % 2 === 1;
+    }
+
+    function findNextLeft(str, from) {
+        let best = null;
+        for (const d of delimiters) {
+            let i = str.indexOf(d.left, from);
+            while (i !== -1 && isEscaped(str, i)) {
+                i = str.indexOf(d.left, i + 1);
+            }
+            if (i !== -1) {
+                if (!best || i < best.index || (i === best.index && d.left.length > best.delim.left.length)) {
+                    best = { index: i, delim: d };
+                }
+            }
+        }
+        return best;
+    }
+
+    function findRight(str, right, from) {
+        let i = str.indexOf(right, from);
+        while (i !== -1 && isEscaped(str, i)) {
+            i = str.indexOf(right, i + 1);
+        }
+        return i;
+    }
+
+    let pos = 0;
+    while (pos < text.length) {
+        const leftHit = findNextLeft(text, pos);
+        if (!leftHit) break;
+
+        const start = leftHit.index;
+        const contentStart = start + leftHit.delim.left.length;
+        const endDelim = findRight(text, leftHit.delim.right, contentStart);
+
+        if (endDelim === -1) {
+            pos = contentStart;
+            continue;
+        }
+
+        const contentEnd = endDelim;
+        const latex = text.slice(contentStart, contentEnd).trim();
+        if (latex) {
+            ranges.push({
+                start,
+                end: endDelim + leftHit.delim.right.length,
+                latex,
+                display: leftHit.delim.display
+            });
+        }
+
+        pos = endDelim + leftHit.delim.right.length;
+    }
+
+    if (!ranges.length) return;
+
+    ranges.sort((a, b) => a.start - b.start);
+
+    const validRanges = ranges.filter((r) => {
+        try {
+            katex.renderToString(r.latex, {
+                displayMode: r.display,
+                throwOnError: true
+            });
+            return true;
+        } catch (_) {
+            return false;
+        }
+    });
+
+    if (!validRanges.length) return;
+
+    // Replace from back to front so earlier indexes remain stable.
+    for (let i = validRanges.length - 1; i >= 0; i--) {
+        const r = validRanges[i];
+        quill.deleteText(r.start, r.end - r.start, Quill.sources.USER);
+        quill.insertEmbed(r.start, "math", { latex: r.latex, display: r.display }, Quill.sources.USER);
     }
 }
 
@@ -564,7 +672,22 @@ function initQuill() {
                 toolbarTable: true
             },
             keyboard: {
-                bindings: QuillTableBetter.keyboardBindings
+                bindings: {
+                    ...QuillTableBetter.keyboardBindings,
+                    pageBackspaceMerge: {
+                        key: 'Backspace',
+                        collapsed: true,
+                        handler: function(range) {
+                            if (!range || range.index !== 0 || currentPageIndex === 0) {
+                                return true;
+                            }
+                            mergeCurrentPageIntoPrevious().catch((err) => {
+                                console.error('Backspace merge failed:', err);
+                            });
+                            return false;
+                        }
+                    }
+                }
             }
         },
         theme: "snow",
@@ -572,28 +695,131 @@ function initQuill() {
     });
 
     currentQuill.root.id = "output-inner-container";
+
+    // Defensive binding: ensure custom math buttons always trigger handlers.
+    const renderBtn = document.querySelector('#toolbar-container .ql-render-math');
+    if (renderBtn && !renderBtn.dataset.bound) {
+        renderBtn.dataset.bound = '1';
+        renderBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            renderSelectedMath(currentQuill);
+        });
+    }
+
+    const renderAllBtn = document.querySelector('#toolbar-container .ql-render-all-math');
+    if (renderAllBtn && !renderAllBtn.dataset.bound) {
+        renderAllBtn.dataset.bound = '1';
+        renderAllBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            renderAllMath(currentQuill);
+        });
+    }
     
     // Listen for text changes to trigger auto-pagination
     let paginationTimeout;
     currentQuill.on('text-change', (delta, oldDelta, source) => {
         // CRITICAL: never auto-paginate when we are loading page data into the editor
         if (window._isLoadingPage) return;
-        if (source === 'user' || source === 'api') {
+        if (source === 'user') {
             clearTimeout(paginationTimeout);
             paginationTimeout = setTimeout(() => {
                 autoPaginate();
             }, 100);
         }
     });
+
+    // Detect structural or font changes applied from controls!
+    // This solves the bug where changing the handwriting style, font size, or 
+    // container geometry caused silent desynchronization until the user pressed a key.
+    const resizeObserver = new ResizeObserver(() => {
+        if (window._isLoadingPage || isPaginating) return;
+        clearTimeout(paginationTimeout);
+        paginationTimeout = setTimeout(() => {
+            autoPaginate();
+        }, 150);
+    });
+    // Monitor both the specific paper and editor bounds
+    resizeObserver.observe(currentQuill.root);
+
+    // Also aggressively catch ANY external font, style, or class changes 
+    // applied by the customization sliders and handwriting buttons!
+    const styleObserver = new MutationObserver((mutations) => {
+        if (window._isLoadingPage || isPaginating) return;
+        let needsReflow = false;
+        for (const mut of mutations) {
+            if (mut.attributeName === 'style' || mut.attributeName === 'class') {
+                needsReflow = true;
+                break;
+            }
+        }
+        if (needsReflow) {
+            clearTimeout(paginationTimeout);
+            paginationTimeout = setTimeout(() => {
+                autoPaginate();
+            }, 150);
+        }
+    });
+
+    styleObserver.observe(currentQuill.root, { attributes: true, attributeFilter: ['style', 'class'] });
+    const outputContainer = document.getElementById('output-container');
+    if (outputContainer) {
+        styleObserver.observe(outputContainer, { attributes: true, attributeFilter: ['style', 'class'] });
+    }
 }
 
 // ========================================================
 // TRUE WYSIWYG AUTO-PAGINATION
 // ========================================================
 let isPaginating = false;
+let pendingRepaginate = false;
 
 let sterileQuill = null;
 let sterileContainer = null;
+
+async function mergeCurrentPageIntoPrevious() {
+    if (!currentQuill || currentPageIndex <= 0) return;
+
+    const DeltaClass = Quill.import('delta');
+    const currentId = pageOrder[currentPageIndex];
+    const prevIndex = currentPageIndex - 1;
+    const prevId = pageOrder[prevIndex];
+
+    const currentData = collectPageFromDOM(currentId);
+    cachePage(currentId, currentData);
+    await updatePageInDB(currentData);
+
+    const prevData = await loadPage(prevId);
+    const prevDelta = new DeltaClass((prevData.quillDelta && prevData.quillDelta.ops) ? prevData.quillDelta.ops : []);
+    const currDelta = new DeltaClass((currentData.quillDelta && currentData.quillDelta.ops) ? currentData.quillDelta.ops : []);
+
+    let prevBody = prevDelta;
+    if (prevDelta.length() > 0) {
+        const lastOp = prevDelta.ops[prevDelta.ops.length - 1];
+        if (typeof lastOp.insert === 'string' && lastOp.insert.endsWith('\n')) {
+            prevBody = prevDelta.slice(0, prevDelta.length() - 1);
+        }
+    }
+    
+    const caretIndexInPrev = Math.max(0, prevBody.length());
+    prevData.quillDelta = prevBody.concat(currDelta);
+    cachePage(prevId, prevData);
+    await updatePageInDB(prevData);
+
+    currentData.quillDelta = new DeltaClass([{ insert: '\n' }]);
+    cachePage(currentId, currentData);
+    await updatePageInDB(currentData);
+
+    await showPage(prevIndex, { skipSave: true });
+
+    if (currentQuill) {
+        const safeCaret = Math.min(caretIndexInPrev, Math.max(0, currentQuill.getLength() - 1));
+        currentQuill.setSelection(safeCaret, 0, Quill.sources.SILENT);
+    }
+
+    setTimeout(() => {
+        autoPaginate();
+    }, 0);
+}
 
 function getSterileQuill() {
     if (!sterileQuill) {
@@ -618,7 +844,7 @@ function getSterileQuill() {
     
     let clonedCSS = `
         width: ${realEditor.clientWidth}px !important;
-        padding: 0px !important;
+        padding: 0px 10px !important;
         white-space: pre-line !important;
         overflow-wrap: anywhere !important;
         overflow: visible !important;
@@ -634,154 +860,312 @@ function getSterileQuill() {
     return sterileQuill;
 }
 
+function findPageSplitIndex(delta, paperContentHeight) {
+    const sq = getSterileQuill();
+    sq.setContents(delta, Quill.sources.SILENT);
+
+    const totalLength = sq.getLength();
+    
+    // SAFETY REFACTOR: Handwriting fonts have massive "descenders" (the bottom tails 
+    // of letters like 'p', 'y', 'g', 'j'). If we allow text to go exactly to the 
+    // physical bottom pixel, the container's CSS margin or overflow will truncate 
+    // the tail of the letter. 
+    // Added a 25px bottom-buffer so the last line always breathes comfortably inside!
+    const maxContentBottom = Math.max(1, paperContentHeight - 25);
+
+    const fullBounds = sq.getBounds(Math.max(0, totalLength - 1));
+    if (!fullBounds || fullBounds.bottom <= maxContentBottom) {
+        return totalLength;
+    }
+
+    let low = 1;
+    let high = totalLength;
+    let fit = 0;
+
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        
+        let checkMid = mid;
+        let bounds = sq.getBounds(checkMid);
+        // If bounds is null (e.g. invisible trailing space or \n), fall back to previous character's bounds
+        while (!bounds && checkMid > 0) {
+            checkMid--;
+            bounds = sq.getBounds(checkMid);
+        }
+
+        if (bounds && bounds.bottom <= maxContentBottom) {
+            fit = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    let splitIndex = Math.max(1, fit + 1);
+
+    // SMART SNAP LOGIC:
+    // Only snap backward if we are splitting precisely in the middle of a word!
+    // Never snap backward over user-typed spaces and newlines, which causes giant gaps
+    // to be shoved to the next page.
+    if (splitIndex < totalLength) {
+        const charAtSplit = sq.getText(Math.max(0, splitIndex - 1), 2);
+        if (charAtSplit.length === 2 && !charAtSplit.includes(' ') && !charAtSplit.includes('\n')) {
+            const SNAP_WINDOW = 15;
+            const start = Math.max(0, splitIndex - SNAP_WINDOW);
+            const probe = sq.getText(start, SNAP_WINDOW);
+            const lastSpace = probe.lastIndexOf(' ');
+            const lastNewline = probe.lastIndexOf('\n');
+            const bestBreak = Math.max(lastSpace, lastNewline);
+            
+            if (bestBreak !== -1) {
+                splitIndex = start + bestBreak + 1;
+            }
+        }
+    }
+
+    return Math.max(1, Math.min(splitIndex, totalLength));
+}
+
 async function autoPaginate() {
-    if (isPaginating || !currentQuill) return;
+    if (!currentQuill || !pageOrder.length) return;
+    if (isPaginating) {
+        pendingRepaginate = true;
+        return;
+    }
     
     const editorNode = currentQuill.root;
-    
     const outputContainer = document.getElementById('output-container');
     if (!outputContainer) return;
     
     const PAPER_CONTENT_HEIGHT = outputContainer.clientHeight;
-    
-    // Quick escape if the active page isn't overflowing visually
-    if (editorNode.scrollHeight <= PAPER_CONTENT_HEIGHT) return;
-    
+
     isPaginating = true;
-    window._isLoadingPage = true; // Lock UI events so manual clicks don't race
-    
-    const originalPageId = currentPageId;
-    const scrollContainer = document.getElementById('outer-container');
-    const originalScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
-    
-    // Obscure the paper so the user doesn't see the seizure-inducing mathematical ripple
-    const finalPageElem = document.getElementById('final_page');
-    if (finalPageElem) {
-        finalPageElem.style.opacity = '0';
-        finalPageElem.style.pointerEvents = 'none';
-        
-        // UNCLAMP live UI so it paints out the string safely if any updates leak
-        editorNode.style.setProperty('height', 'auto', 'important');
-        editorNode.style.setProperty('overflow', 'visible', 'important');
-        editorNode.style.setProperty('min-height', 'auto', 'important');
-    }
+    window._isLoadingPage = true;
 
     try {
-        let currentIndex = pageOrder.indexOf(currentPageId);
-        if (currentIndex === -1) { isPaginating = false; return; }
+        const safeStartIndex = Math.max(0, Math.min(currentPageIndex, pageOrder.length - 1));
+        const affectedPageIds = pageOrder.slice(safeStartIndex);
         
-        let pId = pageOrder[currentIndex];
-        let workingDelta = currentQuill.getContents();
+        // 1. PRELOAD ASYNC DB STATES
+        const loadedPagesMap = {};
+        for (const id of affectedPageIds) {
+            loadedPagesMap[id] = await loadPage(id);
+        }
+        const templatePage = loadedPagesMap[affectedPageIds[0]];
+        
+        // --- SYNCHRONOUS CRITICAL SECTION START ---
+        // Nothing inside this block yields the event loop!
+        const originalPageIndex = currentPageIndex;
+        const originalSelection = currentQuill.getSelection();
+        const wasFocused = currentQuill.hasFocus();
+        const scrollContainer = document.getElementById('outer-container');
+        const originalScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+        
         const DeltaClass = Quill.import('delta');
+        const liveDelta = currentQuill.getContents();
+        let combinedDelta = new DeltaClass();
+
+        for (let i = 0; i < affectedPageIds.length; i++) {
+            const pageId = affectedPageIds[i];
+            let pageDelta;
+
+            if (pageId === pageOrder[currentPageIndex]) {
+                // Determine if the original stored page intentionally ended with a newline
+                const storedDelta = loadedPagesMap[pageId]?.quillDelta;
+                const sd = new DeltaClass((storedDelta && storedDelta.ops) ? storedDelta.ops : []);
+                
+                let storedEndsWithNewline = false;
+                if (sd.length() > 0) {
+                    const lastOp = sd.ops[sd.ops.length - 1];
+                    if (typeof lastOp.insert === 'string' && lastOp.insert.endsWith('\n')) {
+                        // The user's page explicitly possessed a trailing newline.
+                        storedEndsWithNewline = true;
+                    }
+                }
+
+                const normalized = new DeltaClass(
+                    (liveDelta && liveDelta.ops) ? liveDelta.ops : [{ insert: '\n' }]
+                );
+                
+                if (!storedEndsWithNewline) {
+                    // Quill adds a phantom newline if there wasn't one. Strip it!
+                    pageDelta = normalized.length() > 1
+                        ? normalized.slice(0, normalized.length() - 1)
+                        : new DeltaClass();
+                } else {
+                    // Valid trailing newline existed. Keep Quill's newline intact.
+                    pageDelta = normalized;
+                }
+            } else {
+                // Inactive pages from DB are perfectly mathematical slices. DO NOT STRIP.
+                const storedDelta = loadedPagesMap[pageId].quillDelta;
+                pageDelta = new DeltaClass(
+                    (storedDelta && storedDelta.ops) ? storedDelta.ops : []
+                );
+            }
+            
+            combinedDelta = combinedDelta.concat(pageDelta);
+        }
         
-        while (true) {
-            // STEP 1: Load the formatting into the pristine Sterile Virtual DOM to measure
-            const sq = getSterileQuill();
-            sq.setContents(workingDelta, Quill.sources.SILENT);
-            
-            const totalLength = sq.getLength();
-            let overflowIndex = -1;
-            
-            // Traverse character coordinates precisely in a completely unclipped environment
-            for (let i = 10; i < totalLength; i += 10) {
-                const bounds = sq.getBounds(i);
-                if (bounds && bounds.bottom > PAPER_CONTENT_HEIGHT) {
-                    overflowIndex = i;
+        let combinedEndsWithNewline = false;
+        if (combinedDelta.length() > 0) {
+            const lastOp = combinedDelta.ops[combinedDelta.ops.length - 1];
+            if (typeof lastOp.insert === 'string' && lastOp.insert.endsWith('\n')) {
+                combinedEndsWithNewline = true;
+            }
+        }
+        if (!combinedEndsWithNewline) {
+            combinedDelta = combinedDelta.concat(new DeltaClass([{ insert: '\n' }]));
+        }
+
+        let remaining = combinedDelta;
+        const reflowed = [];
+
+        while (reflowed.length < affectedPageIds.length) {
+            if (remaining.length() === 0) {
+                reflowed.push(new DeltaClass([{ insert: '\n' }]));
+                continue;
+            }
+
+            const splitIndex = findPageSplitIndex(remaining, PAPER_CONTENT_HEIGHT);
+            const clamped = Math.max(1, Math.min(splitIndex, remaining.length()));
+
+            reflowed.push(remaining.slice(0, clamped));
+            remaining = remaining.slice(clamped);
+        }
+
+        const newPagesPending = [];
+        while (remaining.length() > 0) {
+            if (remaining.length() === 1) {
+                const singleOp = remaining.ops[0];
+                // Only drop if it's the exact phantom trailing text newline. 
+                // Do NOT drop embeds (like Math formulas of length 1) or characters like "A"!
+                if (typeof singleOp.insert === 'string' && singleOp.insert === '\n') {
                     break;
                 }
             }
-            
-            if (overflowIndex !== -1) {
-                // Backtrack linearly to find exactly the first overflow char
-                for (let i = overflowIndex; i >= Math.max(0, overflowIndex - 10); i--) {
-                    const bounds = sq.getBounds(i);
-                    if (bounds && bounds.bottom <= PAPER_CONTENT_HEIGHT) {
-                        overflowIndex = i + 1;
-                        break;
-                    }
-                }
-            }
-            
-            if (overflowIndex === -1) {
-                // Formatting perfectly fits on this page! We are done ripping.
-                const pageData = await loadPage(pId);
-                pageData.quillDelta = workingDelta;
-                cachePage(pId, pageData);
-                await updatePageInDB(pageData);
-                break;
-            }
-            
-            // Backtrack to nearest space so words aren't brutally halved
-            const textToOverflow = sq.getText(Math.max(0, overflowIndex - 30), 30);
-            const lastSpace = textToOverflow.lastIndexOf(' ');
-            if (lastSpace !== -1 && lastSpace > 10) {
-                overflowIndex = (overflowIndex - 30) + lastSpace + 1;
-            }
-            
-            // STEP 3: Mathematically sever the strings into discrete visual pages
-            const slicedPageDelta = workingDelta.slice(0, overflowIndex);
-            const overflowDelta = workingDelta.slice(overflowIndex);
-            
-            // STEP 4: Burn the perfectly sized slice into DB for THIS respective virtual page
-            const pageData = await loadPage(pId);
-            pageData.quillDelta = slicedPageDelta;
-            cachePage(pId, pageData);
-            await updatePageInDB(pageData);
-            
-            // If there's barely a character left (e.g. newline), break the ripple.
-            if (!overflowDelta || overflowDelta.length() <= 1) {
-                break; 
-            }
-            
-            // STEP 5: Ripple unconstrained overflow payload onto the NEXT Page
-            currentIndex++;
-            if (currentIndex < pageOrder.length) {
-                // Database Page Exists! Prepend overflow payload to whatever was already on that page!
-                pId = pageOrder[currentIndex];
-                const nextPageData = await loadPage(pId);
-                const existingNextDelta = nextPageData.quillDelta || new DeltaClass([{ insert: '\n' }]);
-                workingDelta = new DeltaClass(overflowDelta.ops).concat(new DeltaClass(existingNextDelta.ops));
-            } else {
-                // Database end reached! Forge an entirely new blank page mathematically.
-                const newPageData = {
-                    title: document.getElementById('top-margin').innerHTML || '',
-                    side: document.getElementById('left-margin-in').innerHTML || '',
-                    quillDelta: overflowDelta,
-                    quillHTML: '',
-                    images: []
-                };
-                pId = await addPageToDB(newPageData);
-                pageOrder.push(pId); // Append perfectly mathematically to notebook sequence
-                await saveNotebookMeta();
-                cachePage(pId, { id: pId, ...newPageData });
-                workingDelta = overflowDelta;
-            }
-        }
-    } catch(err) {
-        console.error('Auto-Pagination Virtual Ripple Failed:', err);
-    } finally {
-        // STEP 6: CLEANUP! Unfreeze the editor smoothly natively to initial user UI State!
-        if (finalPageElem) {
-            editorNode.style.removeProperty('height');
-            editorNode.style.removeProperty('overflow');
-            editorNode.style.removeProperty('min-height');
-            finalPageElem.style.opacity = '1';
-            finalPageElem.style.pointerEvents = 'auto';
+            const splitIndex = findPageSplitIndex(remaining, PAPER_CONTENT_HEIGHT);
+            const clamped = Math.max(1, Math.min(splitIndex, remaining.length()));
+            newPagesPending.push(remaining.slice(0, clamped));
+            remaining = remaining.slice(clamped);
         }
         
-        isPaginating = false;
-        window._isLoadingPage = false;
+        // Immediately restore the live DOM! This blocks all user edits cleanly.
+        let restoreDelta = reflowed[currentPageIndex - safeStartIndex];
+        if (!restoreDelta) {
+            restoreDelta = new DeltaClass([{ insert: '\n' }]);
+        }
         
-        // This fully restores the original visual layout to whoever triggered typing!
-        await showPage(originalPageId, { skipSave: true });
+        currentQuill.setContents(restoreDelta, Quill.sources.SILENT);
+
+        if (wasFocused) {
+            const targetIndex = Math.min(
+                originalSelection?.index ?? 0,
+                Math.max(0, currentQuill.getLength() - 1)
+            );
+            currentQuill.focus();
+            currentQuill.setSelection(targetIndex, 0, Quill.sources.SILENT);
+        }
         
         if (scrollContainer) {
             scrollContainer.scrollTop = originalScrollTop;
         }
+        // --- SYNCHRONOUS CRITICAL SECTION END ---
+
+        // 2. NOW RUN ALL ASYNC DB SAVES
+        // Even if user types right now, it's fine! It will just trigger another autoPaginate.
+        let addedPages = false;
+        for (let i = 0; i < newPagesPending.length; i++) {
+            const newPageData = {
+                title: templatePage.title || '',
+                side: templatePage.side || '',
+                quillDelta: newPagesPending[i],
+                quillHTML: '',
+                images: []
+            };
+
+            const newId = await addPageToDB(newPageData);
+            pageOrder.push(newId);
+            addedPages = true;
+            cachePage(newId, { id: newId, ...newPageData });
+        }
+
+        if (addedPages) {
+            await saveNotebookMeta();
+        }
+
+        for (let i = 0; i < affectedPageIds.length; i++) {
+            const pageId = affectedPageIds[i];
+            const pageData = loadedPagesMap[pageId];
+            pageData.quillDelta = reflowed[i];
+            cachePage(pageId, pageData);
+            await updatePageInDB(pageData);
+        }
+
+        // 3. COLLAPSE EMPTY PAGES
+        const removableIds = [];
+        for (let i = pageOrder.length - 1; i >= 1; i--) {
+            const pageId = pageOrder[i];
+            const pageData = await loadPage(pageId);
+            const delta = pageData?.quillDelta;
+            
+            let isEmpty = false;
+            if (!delta) {
+                isEmpty = true;
+            } else {
+                const sd = (typeof delta.length === 'function') 
+                    ? delta 
+                    : new DeltaClass((delta.ops && Array.isArray(delta.ops)) ? delta.ops : []);
+                const len = sd.length();
+                if (len === 0) {
+                    isEmpty = true;
+                } else if (len === 1) {
+                    const firstOp = sd.ops[0];
+                    if (typeof firstOp.insert === 'string' && firstOp.insert === '\n') {
+                        isEmpty = true;
+                    }
+                }
+            }
+
+            const hasImages = Array.isArray(pageData?.images) && pageData.images.length > 0;
+
+            if (isEmpty && !hasImages) {
+                removableIds.push(pageId);
+            } else {
+                break;
+            }
+        }
+
+        if (removableIds.length > 0) {
+            for (const id of removableIds) {
+                await deletePageFromDB(id);
+                pageCache.delete(id);
+            }
+            pageOrder = pageOrder.slice(0, pageOrder.length - removableIds.length);
+            await saveNotebookMeta();
+        }
+
+        if (currentPageIndex >= pageOrder.length) {
+            currentPageIndex = Math.max(0, pageOrder.length - 1);
+            await showPage(currentPageIndex, { skipSave: true });
+        } else {
+            updatePageIndicator();
+        }
+        
+    } catch(err) {
+        console.error('Auto-Pagination Virtual Ripple Failed:', err);
+    } finally {
+        isPaginating = false;
+        window._isLoadingPage = false;
+        
+        if (pendingRepaginate) {
+            pendingRepaginate = false;
+            setTimeout(() => {
+                autoPaginate();
+            }, 0);
+        }
     }
 }
-
-
 
 // ========================================================
 // INTERSECTION OBSERVER FOR LAZY LOAD
@@ -825,11 +1209,11 @@ window.onload = function () {
 // Helper functions for cookie banner animations
 function showCookieBanner() {
     const banner = document.getElementById("consentx-banner");
-    banner.style.display = "block";
-    
-    // Force reflow to ensure the display change takes effect
-    banner.offsetHeight;
-  
+    if(banner) {
+        banner.style.display = "block";
+        // Force reflow to ensure the display change takes effect
+        banner.offsetHeight;
+    }
 }
 
 function hideCookieBanner() {
@@ -1112,30 +1496,6 @@ function setCSSVariable(variable, value) {
         }
 
         // Auto-fit: shrink paper so the ENTIRE page (both W and H) fits in the viewport
-        // This means no scrolling needed on fresh load — just like opening a PDF viewer
-        function autoFitToScreen() {
-            if (!wsZoomSlider || !wsZoomVal) return;
-
-            const container = document.getElementById('outer-container');
-            if (!container) return;
-
-            const A4_W = 794;
-            const A4_H = 1123;
-            // Available space in the scrollable viewport (subtract padding)
-            const availW = container.clientWidth  - 48; // 24px padding each side
-            const availH = container.clientHeight - 60; // toolbar gap
-
-            // Fit BOTH dimensions: use the more constrained axis
-            const ratioW = availW / A4_W;
-            const ratioH = availH / A4_H;
-            let ratio = Math.min(ratioW, ratioH);
-            ratio = Math.max(0.25, Math.min(1.5, ratio)); // clamp sensibly
-
-            wsZoomSlider.value = ratio;
-            applyWorkspaceZoom(ratio);
-        }
-
-        // Auto-fit: shrink paper so the ENTIRE page (both W and H) fits in the viewport
         function autoFitToScreen() {
             if (!wsZoomSlider || !wsZoomVal) return;
             const container = document.getElementById('outer-container');
@@ -1176,7 +1536,7 @@ function setCSSVariable(variable, value) {
             isBackgroundOn = checkbox.checked;   // read directly — no toggle drift
 
             const backgroundValue = isBackgroundOn
-                ? 'linear-gradient(#0c1d8c66 0.15em, transparent 0.1em)'
+                ? 'linear-gradient(#0c1d8c66 1px, transparent 1px)'
                 : 'none';
 
             setCSSVariable('background-lines', backgroundValue);
@@ -1214,11 +1574,6 @@ function setCSSVariable(variable, value) {
 
         let customFontUploaded = false;
         let uploadedFontFamily = '';
-        
-        // Helper: set a CSS variable
-        function setCSSVariable(name, value) {
-          document.documentElement.style.setProperty(`--${name}`, value);
-        }
         
         // Core: update both main- and math-font variables
         function applyFontVariables(fontFamily) {
@@ -1310,10 +1665,10 @@ function setCSSVariable(variable, value) {
   // ==============================
   // DEFAULT FONT ON PAGE LOAD
   // ==============================
-  const firstFont = picker.querySelector(".font-option");
+  const defaultFont = picker.querySelector(".font-option.active") || picker.querySelector(".font-option");
 
-  if (firstFont) {
-    select.value = firstFont.dataset.font;
+  if (defaultFont) {
+    select.value = defaultFont.dataset.font;
     changeFontFamily(); // APPLY DEFAULT FONT
   }
 
