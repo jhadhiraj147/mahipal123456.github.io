@@ -871,7 +871,13 @@ function findPageSplitIndex(delta, paperContentHeight) {
     // physical bottom pixel, the container's CSS margin or overflow will truncate 
     // the tail of the letter. 
     // Added a 25px bottom-buffer so the last line always breathes comfortably inside!
-    const maxContentBottom = Math.max(1, paperContentHeight - 25);
+    // Safari's flexbox clientHeight sometimes returns slightly inaccurate bounds compared to Chrome,
+    // and font descenders (or KaTeX blocks) render taller in WebKit. 
+    // Increasing the buffer from 25px to 55px guarantees a minimum of ~1.5 lines of safe breathing 
+    // room, preventing the last line from being horizontally sheared off at the A4 bottom.
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const bottomBuffer = isSafari ? 75 : 45; 
+    const maxContentBottom = Math.max(1, paperContentHeight - bottomBuffer);
 
     const fullBounds = sq.getBounds(Math.max(0, totalLength - 1));
     if (!fullBounds || fullBounds.bottom <= maxContentBottom) {

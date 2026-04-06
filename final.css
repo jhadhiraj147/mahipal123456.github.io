@@ -2284,6 +2284,7 @@ display:none;
 
 #top-margin{
     
+    overflow: hidden;
     overflow: clip;
     width: 100%; /* Fallback for older browsers */
     width: -moz-available; /* Firefox */
@@ -2314,6 +2315,7 @@ display:none;
     white-space: pre-line;
     overflow-wrap: anywhere;
     box-sizing: border-box;
+    overflow: hidden;
     overflow: clip;
     position: relative;
     display: flex;   
@@ -2332,6 +2334,7 @@ display:none;
     width: 100%;
     height: auto;
     /* line-height: 23px; */
+    overflow: hidden;
     overflow: clip;
     overflow-wrap: anywhere;
     color:var(--font-color);
@@ -3705,7 +3708,8 @@ details[open] .info-box {
 
 #left-margin-in{
 
-  overflow: clip;
+  overflow: hidden;
+    overflow: clip;
   height: auto;
   width: 100%;
   word-wrap :  break-word;
