@@ -876,7 +876,7 @@ function findPageSplitIndex(delta, paperContentHeight) {
     // Increasing the buffer from 25px to 55px guarantees a minimum of ~1.5 lines of safe breathing 
     // room, preventing the last line from being horizontally sheared off at the A4 bottom.
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    const bottomBuffer = isSafari ? 75 : 45; 
+    const bottomBuffer = isSafari ? 120 : 60; 
     const maxContentBottom = Math.max(1, paperContentHeight - bottomBuffer);
 
     const fullBounds = sq.getBounds(Math.max(0, totalLength - 1));

@@ -2244,7 +2244,7 @@ display:none;
 /* ── Left margin line extends full paper height ── */
 #left-margin {
   box-sizing: border-box;
-  min-height: 100%;               /* stretch to fill content_page height */
+  height: 100%;
   align-self: stretch;            /* fill cross-axis in flex row */
   width: var(--box-width);
   min-width: var(--box-width);
@@ -2255,7 +2255,7 @@ display:none;
 #content_page {
   display: flex;
   flex-direction: row;
-  min-height: 100%;               /* grow with content instead of capping */
+  height: 100%;
   overflow-y: visible;
   background-attachment: local;
   background-image: var(--background-lines);
@@ -2263,7 +2263,7 @@ display:none;
 }
 
 #shadow-effect {
-  min-height: 100%;               /* grow with content */
+  height: 100%;
   background-size: contain;
   background-color: var(--background-color);
   background-image: var(--custom-background-image);
@@ -2278,7 +2278,7 @@ display:none;
   font-family: var(--main-font);
   overflow: auto;
   width: 100%;
-  min-height: 100%;              /* grow with content */
+  height: 100%;
 }
 
 
@@ -2310,7 +2310,7 @@ display:none;
 
 #output-container {
     width: 100%;
-    min-height: 100%;
+    height: 100%;
     border-left: var(--output-left-border);
     white-space: pre-line;
     overflow-wrap: anywhere;
@@ -2345,13 +2345,13 @@ display:none;
 #content_page {
     display: flex;
     flex-direction: row;
-    min-height: 100%;
+    height: 100%;
     overflow-y: visible;
     background-attachment: local;
     flex: 1;
 }
 #shadow-effect {
-    min-height: 100%;
+    height: 100%;
     background-size: contain;
     background-color: var(--background-color);
     background-image: var(--custom-background-image);
@@ -2365,7 +2365,7 @@ display:none;
     font-family: var(--main-font);
     overflow: auto;
     width: 100%;
-    min-height: 100%;
+    height: 100%;
 }
 #section2{
     padding: clamp(60px, 8vh, 100px) clamp(20px, 5vw, 40px);
