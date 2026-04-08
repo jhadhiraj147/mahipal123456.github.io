@@ -2348,7 +2348,7 @@ async function captureExportCanvas() {
   try {
       const canvas = await html2canvas(captureRoot, {
         scale: 3,
-    backgroundColor: null,
+    backgroundColor: '#ffffff', // Ensures JPEG doesn't turn transparent pixels black
     useCORS: true,
     removeContainer: false, // REQUIRED
 
@@ -2471,20 +2471,20 @@ async function downloadAllPagesAsPDF() {
     await renderPageForExport(pageData);
 
     const canvas = await captureExportCanvas();
-    const imgData = canvas.toDataURL("image/png");
+    const imgData = canvas.toDataURL("image/jpeg", 0.85); // 85% JPEG compression drastically reduces PDF file size
 
-    const scale = 3;
-    const pdfWidth = canvas.width / scale;
-    const pdfHeight = canvas.height / scale;
+      const scale = 3;
+      const pdfWidth = canvas.width / scale;
+      const pdfHeight = canvas.height / scale;
 
-    if (i === 0) {
-      pdf = new window.jspdf.jsPDF('p', 'pt', [pdfWidth, pdfHeight]);
-    } else {
-      pdf.addPage([pdfWidth, pdfHeight], 'p');
-      pdf.setPage(i + 1);
-    }
-    
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      if (i === 0) {
+        pdf = new window.jspdf.jsPDF('p', 'pt', [pdfWidth, pdfHeight]);
+      } else {
+        pdf.addPage([pdfWidth, pdfHeight], 'p');
+        pdf.setPage(i + 1);
+      }
+      
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
     canvas.width = canvas.height = 0;
 
     await new Promise(r => setTimeout(r, 0));
@@ -2542,8 +2542,8 @@ async function downloadCurrentPagePDF() {
   const pdfHeight = canvas.height / scale;
 
   const pdf = new window.jspdf.jsPDF('p', 'pt', [pdfWidth, pdfHeight]);
-  const imgData = canvas.toDataURL("image/png");
-  pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    const imgData = canvas.toDataURL("image/jpeg", 0.85);
+    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
   pdf.save("current_page.pdf");
 
   ProgressLoader.hide();
