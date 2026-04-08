@@ -954,6 +954,64 @@ function findPageSplitIndex(delta, paperContentHeight) {
     let splitIndex = Math.max(1, fit + 1);
 
     // SMART SNAP LOGIC:
+    // MATH BLOCK PROTECTION: Never split inside an unrendered $$...$$ block!
+    function getMathBlockSnap(delta, index) {
+        let str = "";
+        if (delta && delta.ops) {
+            for (const op of delta.ops) {
+                if (typeof op.insert === "string") str += op.insert;
+                else str += "\uFFFC";
+            }
+        }
+        
+        let insideDisplay = false;
+        let insideInline = false;
+        let lastBlockStart = -1;
+        
+        for (let i = 0; i < index; i++) {
+            if (str.substring(i, i+2) === "$$") {
+                if (!insideDisplay && !insideInline) {
+                    insideDisplay = true;
+                    lastBlockStart = i;
+                } else if (insideDisplay) {
+                    insideDisplay = false;
+                }
+                i++; 
+            } else if (str.substring(i, i+2) === "\\[") {
+                if (!insideDisplay && !insideInline) {
+                    insideDisplay = true;
+                    lastBlockStart = i;
+                }
+                i++;
+            } else if (str.substring(i, i+2) === "\\]") {
+                if (insideDisplay) insideDisplay = false;
+                i++;
+            } else if (str.substring(i, i+1) === "$") {
+                // Ignore escaped $\$
+                if (i > 0 && str.substring(i-1, i) === "\\") continue;
+                
+                if (!insideDisplay) {
+                    if (!insideInline) {
+                        insideInline = true;
+                        lastBlockStart = i;
+                    } else {
+                        insideInline = false;
+                    }
+                }
+            }
+        }
+        
+        if ((insideDisplay || insideInline) && lastBlockStart > 0) {
+            return lastBlockStart;
+        }
+        return -1;
+    }
+
+    const mathSnap = getMathBlockSnap(delta, splitIndex);
+    if (mathSnap !== -1) {
+        splitIndex = mathSnap;
+    }
+
     // Only snap backward if we are splitting precisely in the middle of a word!
     // Never snap backward over user-typed spaces and newlines, which causes giant gaps
     // to be shoved to the next page.
