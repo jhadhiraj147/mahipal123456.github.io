@@ -264,6 +264,7 @@ function applyPageToDOM(data = {}) {
     // Small rAF delay ensures Quill finishes rendering before we release the guard
     requestAnimationFrame(() => {
         window._isLoadingPage = false;
+        if (typeof scaleOversizedMath === "function") scaleOversizedMath();
     });
 
     shadowPage.querySelectorAll(".top-img").forEach(e => e.remove());
@@ -503,6 +504,8 @@ async function renderSelectedMath(quill) {
     );
 
     quill.setSelection(range.index + 1, 0, Quill.sources.SILENT);
+
+      setTimeout(scaleOversizedMath, 50);
 }
 
 async function renderAllMath(quill) {
@@ -612,9 +615,50 @@ async function renderAllMath(quill) {
         quill.deleteText(r.start, r.end - r.start, Quill.sources.USER);
         quill.insertEmbed(r.start, "math", { latex: r.latex, display: r.display }, Quill.sources.USER);
     }
+
+    setTimeout(scaleOversizedMath, 50);
 }
 
-function initQuill() {
+
+  // Safely auto-scale massive equations that spill off the horizontal right edge
+  function scaleOversizedMath() {
+      const editorNode = document.getElementById('output-inner-container');
+      if (!editorNode) return;
+      
+      const maxWidth = editorNode.clientWidth - 15; // 15px safety buffer
+      if (maxWidth <= 0) return;
+
+      const mathNodes = editorNode.querySelectorAll('.ql-math');
+      let didResize = false;
+
+      mathNodes.forEach(math => {
+          // Reset to natural size to measure
+          math.style.fontSize = ""; 
+          
+          const katexEl = math.querySelector('.katex');
+          const katexDisplay = math.querySelector('.katex-display');
+          const targetEl = katexDisplay || katexEl;
+          
+          if (!targetEl) return;
+          
+          const mathWidth = targetEl.scrollWidth;
+          
+          if (mathWidth > maxWidth) {
+              const scale = maxWidth / mathWidth;
+              math.style.fontSize = `${Math.floor(scale * 100)}%`;
+              didResize = true;
+          }
+      });
+      
+      // If we heavily shrunk vertical elements, the page height changed, so 
+      // we must tell the auto-paginator to run again so it doesn't leave huge bottom gaps!
+      if (didResize && typeof autoPaginate === 'function' && !window._isLoadingPage) {
+           setTimeout(autoPaginate, 100);
+      }
+  }
+
+
+  function initQuill() {
     if (currentQuill) return;
 
     // Register table-better
@@ -1076,6 +1120,9 @@ async function autoPaginate() {
         if (scrollContainer) {
             scrollContainer.scrollTop = originalScrollTop;
         }
+
+        if (typeof scaleOversizedMath === 'function') scaleOversizedMath();
+
         // --- SYNCHRONOUS CRITICAL SECTION END ---
 
         // 2. NOW RUN ALL ASYNC DB SAVES
